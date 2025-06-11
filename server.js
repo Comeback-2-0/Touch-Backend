@@ -5,7 +5,7 @@ require('dotenv').config();           // Load variables from .env
 const connectDB = require('./config/db');   // centralised connection helper
 const app = require('./app');         // Express instance
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3333;
 
 // Optional: silence Mongoose’s strictQuery de-precation notice
 // mongoose.set('strictQuery', false);
