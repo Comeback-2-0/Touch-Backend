@@ -1,0 +1,10 @@
+├─ package.json
+├─ tsconfig.json
+├─ index.js
+├─ app.js        
+├─ config/
+│    └─ db.js       
+├─ middlewares/
+├─ routes/     
+├─ controllers/
+└─ utils/

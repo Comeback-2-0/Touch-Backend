@@ -4,9 +4,13 @@ const express = require('express');
 const connectDB = require('./config/db');       // Import DB connection function
 const userRoutes = require('./routes/userRoutes');
 const postRoutes = require('./routes/postRoutes');
+const authRoutes = require('./routes/auth');
 const communityRoutes = require('./routes/communityRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const path = require('path');
+const bodyParser = require('body-parser');
+
 
 const app = express();
 // connectDB();                                    // Connect to MongoDB (using Mongoose)
@@ -22,10 +26,12 @@ app.use('/api/posts', postRoutes);
 app.use('/api/communities', communityRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use(bodyParser.json()); // to parse JSON
+app.use('/auth', authRoutes);
 
-// Basic route for health check
+// Fallback route to serve index.html for root URL
 app.get('/', (req, res) => {
-  res.send('Touch API is running');
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // Start server
