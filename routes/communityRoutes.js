@@ -1,12 +1,14 @@
-// routes/communityRoutes.js
 const express = require('express');
-const router  = express.Router();
-const communityController = require('../controllers/communityController');
+const router = express.Router();
+const Community = require('../models/Community');
 
-// get list of communities
-router.get('/', communityController.getAllCommunities);
-
-// create a new community (for admins/future use)
-router.post('/', communityController.createCommunity);
+router.get('/', async (req, res) => {
+  try {
+    const communities = await Community.find({});
+    res.json(communities);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch communities' });
+  }
+});
 
 module.exports = router;
