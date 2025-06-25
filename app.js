@@ -1,4 +1,5 @@
 // app.js (Express initialization)
+const cors = require('cors');
 require('dotenv').config();                     // Load .env file if present (for MONGO_URI, JWT_SECRET, etc.)
 const express = require('express');
 const connectDB = require('./config/db');       // Import DB connection function
@@ -10,14 +11,22 @@ const messageRoutes = require('./routes/messageRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const path = require('path');
 const bodyParser = require('body-parser');
-
+const reelRoutes = require('./routes/reelRoutes');
 
 const app = express();
 // connectDB();                                    // Connect to MongoDB (using Mongoose)
 
 // Global middlewares
-app.use(express.json());                        // Body parser for JSON
-// app.use(cors());                             // Enable CORS if needed for client app
+ app.use(express.json());                        // Body parser for JSON
+ app.use(cors());  
+// app.use(express.json());
+// app.use('/api/users', userRoutes);
+// app.use('/api/posts', postRoutes);
+ app.use('/api/reels', reelRoutes); // Supports mood-based reels
+// app.use('/api/comments', commentRoutes); // Optional if separate
+// app.use('/api/communities', communityRoutes);
+// app.use('/api/messages', messageRoutes);
+// app.use('/api/notifications', notificationRoutes);                           // Enable CORS if needed for client app
 // (Other middlewares like morgan for logging can be added here)
 
 // Register API routes (mount routers)
