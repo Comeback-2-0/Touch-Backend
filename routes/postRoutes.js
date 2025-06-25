@@ -1,12 +1,19 @@
-// routes/postRoutes.js
+// app/routes/postRoutes.js
 const express = require('express');
-const router  = express.Router();
-const postController = require('../controllers/postController');
+const upload = require('../middlewares/upload');
+const {
+  getApprovedPosts,
+  createComment,
+  likePost,
+  replyToComment,
+  createPost,
+} = require('../controllers/postController');
+const router = express.Router();
 
-// PUBLIC – list all posts (later you’ll add query params for mood, pagination, etc.)
-router.get('/', postController.getAllPosts);
-
-// PROTECTED (once auth is ready) – create a post
-router.post('/', postController.createPost);
+router.get('/:groupId/posts', getApprovedPosts);
+router.post('/:postId/like', likePost);
+router.post('/:postId/comment', createComment);
+router.post('/comments/:commentId/reply', replyToComment);
+router.post('/create', upload.single('image'), createPost);
 
 module.exports = router;

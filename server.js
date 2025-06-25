@@ -13,6 +13,10 @@ const PORT = process.env.PORT || 3333;
     await connectDB();
     console.log("✅ MongoDB connected");
 
+    // ⏰ Start cron jobs
+    require('./utils/cron');
+    console.log("🕒 Cron job initialized");
+
     // 2️⃣ Start the HTTP server ----------------------------------------------
     const httpServer = http.createServer(app);
 
