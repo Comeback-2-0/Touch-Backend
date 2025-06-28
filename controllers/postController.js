@@ -1,6 +1,6 @@
 // app/controllers/postController.js
-const Post = require('../models/Post');
-const Comment = require('../models/Comment');
+const Post = require("../models/Post");
+const Comment = require("../models/Comment");
 
 exports.getApprovedPosts = async (req, res) => {
   const posts = await Post.find({
@@ -8,15 +8,66 @@ exports.getApprovedPosts = async (req, res) => {
     isQueued: false,
   })
     .sort({ approvedAt: -1 })
-    .populate('comments');
+    .populate("comments");
   res.json(posts);
 };
 
 exports.likePost = async (req, res) => {
+  const { userId } = req.body;
   const post = await Post.findById(req.params.postId);
-  post.likes += 1;
+
+  if (!post) return res.status(404).json({ error: "Post not found" });
+
+  const alreadyLiked = post.likedBy.includes(userId);
+  const alreadyDisliked = post.dislikedBy.includes(userId);
+
+  if (alreadyLiked) {
+    // Unlike
+    post.likes -= 1;
+    post.likedBy = post.likedBy.filter((id) => id !== userId);
+  } else {
+    // Like
+    post.likes += 1;
+    post.likedBy.push(userId);
+
+    // Remove dislike if exists
+    if (alreadyDisliked) {
+      post.dislikes -= 1;
+      post.dislikedBy = post.dislikedBy.filter((id) => id !== userId);
+    }
+  }
+
   await post.save();
-  res.json({ message: 'Liked' });
+  res.json(post); // Return updated post
+};
+
+exports.dislikePost = async (req, res) => {
+  const { userId } = req.body;
+  const post = await Post.findById(req.params.postId);
+
+  if (!post) return res.status(404).json({ error: "Post not found" });
+
+  const alreadyDisliked = post.dislikedBy.includes(userId);
+  const alreadyLiked = post.likedBy.includes(userId);
+
+  if (alreadyDisliked) {
+    // Remove dislike
+    post.dislikes -= 1;
+    post.dislikedBy = post.dislikedBy.filter((id) => id !== userId);
+  } else {
+    // Dislike
+    post.dislikes += 1;
+    post.dislikedBy.push(userId);
+
+    // Remove like if exists
+    if (alreadyLiked) {
+      post.likes -= 1;
+      post.likedBy = post.likedBy.filter((id) => id !== userId);
+    }
+  }
+
+  await post.save();
+  res.json(post); // Return updated post
 };
 
 exports.createComment = async (req, res) => {
@@ -38,7 +89,7 @@ exports.replyToComment = async (req, res) => {
   comment.replies.push({ text, userId });
   await comment.save();
 
-  res.json({ message: 'Reply added' });
+  res.json({ message: "Reply added" });
 };
 
 exports.createPost = async (req, res) => {
@@ -60,7 +111,7 @@ exports.createPost = async (req, res) => {
     await newPost.save();
     res.status(201).json(newPost);
   } catch (err) {
-    console.error('Post creation error:', err);
-    res.status(500).json({ error: 'Post creation failed' });
+    console.error("Post creation error:", err);
+    res.status(500).json({ error: "Post creation failed" });
   }
 };

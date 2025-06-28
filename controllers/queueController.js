@@ -48,3 +48,41 @@ exports.undoReportQueuePost = async (req, res) => {
 
   res.json({ message: 'Report undone' });
 };
+
+exports.promoteTopPost = async (req, res) => {
+  const { groupId } = req.params;
+
+  try {
+    // 1. Find the top-voted queued post
+    const topPost = await Post.findOne({
+      groupId,
+      isQueued: true
+    })
+      .sort({ votes: -1, createdAt: 1 }) // Sort by votes (desc), then by oldest
+      .exec();
+
+    if (!topPost) {
+      return res.status(404).json({ message: 'No queued posts found' });
+    }
+
+    // 2. Promote this top post
+    topPost.isQueued = false;
+    topPost.approvedAt = new Date();
+    await topPost.save();
+
+    // 3. Demote all others in queue by setting their votes to -1
+    await Post.updateMany(
+      {
+        groupId,
+        isQueued: true,
+        _id: { $ne: topPost._id }, // exclude the promoted post
+      },
+      { $set: { votes: -1 } }
+    );
+
+    return res.json({ message: 'Top post promoted', post: topPost });
+  } catch (error) {
+    console.error('Promotion error:', error);
+    return res.status(500).json({ message: 'Failed to promote post' });
+  }
+};
