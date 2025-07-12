@@ -1,13 +1,21 @@
-const mongoose = require('mongoose');
-const Schema = mongoose.Schema;
+// models/Post.js
+const mongoose = require("mongoose");
 
-const PostSchema = new Schema({
-  mediaUrl:   { type: String, required: true },              // URL to image/video media for the post
-  caption:    { type: String },                              // Optional text caption
-  mood:       { type: String, required: true },              // Mood tag/category for this post
-  authorId:   { type: Schema.Types.ObjectId, ref: 'User', required: true }, // Reference to User who created the post
-  likeCount:  { type: Number, default: 0 },                  // Number of likes (default 0)
-  createdAt:  { type: Date, default: Date.now }              // Post creation timestamp
+const postSchema = new mongoose.Schema({
+  groupId: { type: mongoose.Schema.Types.ObjectId, ref: "Group" },
+  content: String,
+  image: { type: String, default: null },
+  isQueued: { type: Boolean, default: true },
+  likes: { type: Number, default: 0 },
+  dislikes: { type: Number, default: 0 },
+  likedBy: [{ type: String }],  
+  dislikedBy: [{ type: String }], 
+  votes: { type: Number, default: 0 },
+  comments: [{ type: mongoose.Schema.Types.ObjectId, ref: "Comment" }],
+  votedBy: [{ type: String }],
+  reportedBy: [{ type: String }],
+  approvedAt: Date,
+  createdAt: { type: Date, default: Date.now },
 });
 
-module.exports = mongoose.model('Post', PostSchema);
+module.exports = mongoose.model("Post", postSchema);

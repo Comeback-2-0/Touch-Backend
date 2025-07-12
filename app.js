@@ -1,31 +1,32 @@
 // app.js (Express initialization)
-require('dotenv').config();                     // Load .env file if present (for MONGO_URI, JWT_SECRET, etc.)
+require('dotenv').config();
 const express = require('express');
-const connectDB = require('./config/db');       // Import DB connection function
+const connectDB = require('./config/db');       
 const userRoutes = require('./routes/userRoutes');
 const postRoutes = require('./routes/postRoutes');
 const authRoutes = require('./routes/auth');
 const communityRoutes = require('./routes/communityRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const queueRoutes = require('./routes/queueRoutes');
+const commentRoutes = require('./routes/commentRoutes');
+const groupRoutes = require('./routes/groupRoutes');
 const path = require('path');
 const bodyParser = require('body-parser');
 
 
 const app = express();
-// connectDB();                                    // Connect to MongoDB (using Mongoose)
-
-// Global middlewares
 app.use(express.json());                        // Body parser for JSON
-// app.use(cors());                             // Enable CORS if needed for client app
-// (Other middlewares like morgan for logging can be added here)
-
-// Register API routes (mount routers)
 
 app.use(bodyParser.json()); // to parse JSON
 app.use('/auth', authRoutes);
 app.use('/messages', messageRoutes);
 app.use('/communities', communityRoutes);
+app.use('/groups', groupRoutes); 
+app.use('/posts', postRoutes);
+app.use('/queue', queueRoutes);
+app.use('/comments', commentRoutes);
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Fallback route to serve index.html for root URL
 app.get('/', (req, res) => {
