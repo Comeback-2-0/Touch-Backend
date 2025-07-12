@@ -1,59 +1,66 @@
-// const express = require('express');
-// const Reel = require('../models/Reel');
-// const router = express.Router();
-
-// router.get('/reels', async (req, res) => {
-//   try {
-//     const reels = await Reel.find();
-//     res.json(reels);
-//   } catch (err) {
-//     res.status(500).json({ error: 'Server error' });
-//   }
-// });
-
-// module.exports = router;
-// routes/reelRoutes.js
 const express = require('express');
 const router = express.Router();
-const Reel = require('../models/Reel'); // make sure this path is correct
+const Reel = require('../models/Reel');
+const {
+  getMoodBasedReels,
+  recordWatchTime,// Optional: if you're using this route
+  getSavedReels,           
+} = require('../controllers/reelController');
+const MoodPreferences = require('../models/MoodPreferences');
 
-// GET /api/reels
-router.get('/', async (req, res) => {
+
+const asyncHandler = require('../utils/asyncHandler');
+
+//console.log('TYPE of getMoodBasedReels:', typeof getMoodBasedReels); 
+
+// Get mood-based reel feed
+router.get('/feed', asyncHandler(getMoodBasedReels));
+
+// Optional: record watch time (if you've implemented it)
+//router.post('/watch', asyncHandler(trackWatchTime));
+router.post('/watch', recordWatchTime);
+
+const { getMoodPreferencesForUser } = require('../controllers/reelController');
+router.get('/user-moods', getMoodPreferencesForUser);
+//router.get('/saved/:userId', getSavedReels);
+// Get all unique moods
+router.get('/moods', async (req, res) => {
   try {
-    const reels = await Reel.find();
-    res.json(reels);
+    const { userId } = req.query;
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+
+    const pref = await MoodPreferences.findOne({ userId });
+    const moodCounts = {};
+
+    if (pref?.watchHistory?.length) {
+      for (const { mood, createdAt } of pref.watchHistory) {
+        if (new Date(createdAt) >= twoDaysAgo) {
+          moodCounts[mood] = (moodCounts[mood] || 0) + 1;
+        }
+      }
+    }
+
+    const allMoods = await Reel.distinct('mood');
+    const sortedRecent = Object.entries(moodCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([m]) => m);
+
+    const remaining = allMoods.filter(m => !sortedRecent.includes(m));
+    const shuffled = remaining.sort(() => Math.random() - 0.5);
+
+    const finalMoodOrder = [...sortedRecent, ...shuffled];
+
+    res.json(finalMoodOrder);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch reels' });
+    console.error('🔥 moods fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch moods' });
   }
 });
 
-router.post('/:reelId/comments', async (req, res) => {
-  const { reelId } = req.params;
-  const { user, text } = req.body;
+// Get all reels (admin/debug route)
+router.get('/reels', asyncHandler(async (req, res) => {
+  const reels = await Reel.find();
+  res.json(reels);
+}));
 
-  try {
-    const reel = await Reel.findById(reelId);
-    if (!reel) return res.status(404).json({ message: 'Reel not found' });
-
-    reel.comments.push({ user, text });
-    await reel.save();
-    res.status(201).json({ message: 'Comment added successfully', comments: reel.comments.at(-1) });
-  } catch (error) {
-    res.status(500).json({ message: 'Error adding comment', error });
-  }
-});
-
-// GET comments for a reel
-// router.get('/:reelId/comments', async (req, res) => {
-//   try {
-//     const reel = await Reel.findById(req.params.reelId);
-//     if (!reel) return res.status(404).json({ message: 'Reel not found' });
-
-//     res.json(reel.comments);
-//   } catch (err) {
-//     res.status(500).json({ message: 'Error fetching comments', err });
-//   }
-// });
-
-
-module.exports = router;
+module.exports = router;

@@ -1,12 +1,63 @@
-// routes/postRoutes.js
 const express = require('express');
-const router  = express.Router();
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const { v4: uuidv4 } = require('uuid');
+// assuming your model is in models/Reel.js
+const Reel = require('../models/Reel');
 const postController = require('../controllers/postController');
+const router = express.Router();
 
-// PUBLIC – list all posts (later you’ll add query params for mood, pagination, etc.)
-router.get('/', postController.getAllPosts);
+// Storage config (video saved locally)
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(__dirname, '../uploads/reels');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir);
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname);
+    cb(null, uuidv4() + ext);
+  },
+});
 
-// PROTECTED (once auth is ready) – create a post
-router.post('/', postController.createPost);
+const upload = multer({ storage });
+
+// @route   POST /api/reels/upload
+// @desc    Upload a new reel
+router.post('/upload', upload.single('video'), async (req, res) => {
+  try {
+    const { caption, mood, creatorId, hashtags  } = req.body;
+    if (!req.file) {
+      return res.status(400).json({ error: 'No video file uploaded' });
+    }
+
+    if (!caption || !mood || !creatorId) {
+      return res.status(400).json({ error: 'Caption, mood, and creatorId are required.' });
+    }
+
+    const newReel = new Reel({
+      videoPath: `/uploads/reels/${req.file.filename}`,
+      mood: mood.split(',').map((m) => m.trim()), // assumes mood is sent as CSV string
+      caption,
+      creatorId,
+      hashtags: hashtags ? hashtags.split(',').map(tag => tag.trim()) : [], // optionally extract from caption later or add custom logic
+    });
+
+    await newReel.save();
+
+    res.status(201).json({ message: 'Reel uploaded successfully', reel: newReel });
+  } catch (err) {
+    console.error('Upload error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/like', postController.likeReel);
+router.post('/save', postController.saveReel); 
+router.post('/:reelId/comments', postController.commentOnReel); 
+router.get('/:reelId/comments', postController.getComments); 
 
 module.exports = router;

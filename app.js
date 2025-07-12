@@ -1,50 +1,44 @@
 // app.js (Express initialization)
 const cors = require('cors');
-require('dotenv').config();                     // Load .env file if present (for MONGO_URI, JWT_SECRET, etc.)
+require('dotenv').config();                     // Load .env file if present
+const mongoose = require('mongoose');
 const express = require('express');
-const connectDB = require('./config/db');       // Import DB connection function
-const userRoutes = require('./routes/userRoutes');
-const postRoutes = require('./routes/postRoutes');
+const path = require('path');
+const fs = require('fs');
+
+const connectDB = require('./config/db');
 const authRoutes = require('./routes/auth');
 const communityRoutes = require('./routes/communityRoutes');
 const messageRoutes = require('./routes/messageRoutes');
-const notificationRoutes = require('./routes/notificationRoutes');
-const path = require('path');
-const bodyParser = require('body-parser');
 const reelRoutes = require('./routes/reelRoutes');
-
+const postRoutes = require('./routes/postRoutes');
 const app = express();
-// connectDB();                                    // Connect to MongoDB (using Mongoose)
 
-// Global middlewares
- app.use(express.json());                        // Body parser for JSON
- app.use(cors());  
-// app.use(express.json());
-// app.use('/api/users', userRoutes);
-// app.use('/api/posts', postRoutes);
- app.use('/api/reels', reelRoutes); // Supports mood-based reels
-// app.use('/api/comments', commentRoutes); // Optional if separate
-// app.use('/api/communities', communityRoutes);
-// app.use('/api/messages', messageRoutes);
-// app.use('/api/notifications', notificationRoutes);                           // Enable CORS if needed for client app
-// (Other middlewares like morgan for logging can be added here)
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Register API routes (mount routers)
+// Optional MongoDB connection
+// connectDB();
+// mongoose.connect('mongodb://127.0.0.1:27017/touchdb', { useNewUrlParser: true, useUnifiedTopology: true })
+//   .then(() => console.log('DB Connected'))
+//   .catch(err => console.log(err));
 
-app.use(bodyParser.json()); // to parse JSON
+// Routes
 app.use('/auth', authRoutes);
 app.use('/messages', messageRoutes);
 app.use('/communities', communityRoutes);
-
-// Fallback route to serve index.html for root URL
+app.use('/api/reels', reelRoutes);  // Mood-based reel feed
+app.use('/api/reels', postRoutes);
+// Serve static homepage (optional)
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Video streaming route (for testing progressive video load)
 app.get('/videos/:filename', (req, res) => {
   const filePath = path.join(__dirname, 'public/videos', req.params.filename);
-  const fs = require('fs');
-
   const stat = fs.statSync(filePath);
   const fileSize = stat.size;
   const range = req.headers.range;
@@ -76,5 +70,13 @@ app.get('/videos/:filename', (req, res) => {
   }
 });
 
+// ✅ Global error handler (for async/route errors)
+app.use((err, req, res, next) => {
+  console.error('❌ Server Error:', err.stack);
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || 'Internal Server Error',
+  });
+});
 
 module.exports = app;
