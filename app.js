@@ -1,6 +1,12 @@
 // app.js (Express initialization)
 require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
+const path = require('path');
+const bodyParser = require('body-parser');
+const fs = require('fs');
+
+// 👉 Route imports
 const postRoutes = require('./routes/postRoutes');
 const authRoutes = require('./routes/auth');
 const communityRoutes = require('./routes/communityRoutes');
@@ -10,33 +16,34 @@ const queueRoutes = require('./routes/queueRoutes');
 const commentRoutes = require('./routes/commentRoutes');
 const groupRoutes = require('./routes/groupRoutes');
 const reelUploadRoutes = require('./routes/reelUploadRoutes');
-const path = require('path');
-const bodyParser = require('body-parser');
-
+const userRoutes = require('./routes/userRoutes'); // ✅ Google login route
 
 const app = express();
-app.use(express.json());                        // Body parser for JSON
 
-app.use(bodyParser.json()); // to parse JSON
+app.use(cors());
+app.use(express.json());
+app.use(bodyParser.json());
+
+// 👉 Main routes
 app.use('/auth', authRoutes);
 app.use('/messages', messageRoutes);
 app.use('/communities', communityRoutes);
-app.use('/groups', groupRoutes); 
+app.use('/groups', groupRoutes);
 app.use('/posts', postRoutes);
 app.use('/queue', queueRoutes);
 app.use('/comments', commentRoutes);
 app.use('/api/reels', reelRoutes);
 app.use('/api/reels', reelUploadRoutes);
+
+// ✅ Google Sign-In Route: /api/auth/google
+app.use('/api', userRoutes);
+
+// 🖼 Serve uploads folder
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Fallback route to serve index.html for root URL
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
+// 📺 Serve videos with range support
 app.get('/videos/:filename', (req, res) => {
   const filePath = path.join(__dirname, 'public/videos', req.params.filename);
-  const fs = require('fs');
 
   const stat = fs.statSync(filePath);
   const fileSize = stat.size;
@@ -69,5 +76,9 @@ app.get('/videos/:filename', (req, res) => {
   }
 });
 
+// 🌐 Root route fallback
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 module.exports = app;
