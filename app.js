@@ -1,16 +1,15 @@
 // app.js (Express initialization)
 require('dotenv').config();
 const express = require('express');
-const connectDB = require('./config/db');       
-const userRoutes = require('./routes/userRoutes');
 const postRoutes = require('./routes/postRoutes');
 const authRoutes = require('./routes/auth');
 const communityRoutes = require('./routes/communityRoutes');
 const messageRoutes = require('./routes/messageRoutes');
-const notificationRoutes = require('./routes/notificationRoutes');
+const reelRoutes = require('./routes/reelRoutes');
 const queueRoutes = require('./routes/queueRoutes');
 const commentRoutes = require('./routes/commentRoutes');
 const groupRoutes = require('./routes/groupRoutes');
+const reelUploadRoutes = require('./routes/reelUploadRoutes');
 const path = require('path');
 const bodyParser = require('body-parser');
 
@@ -26,6 +25,8 @@ app.use('/groups', groupRoutes);
 app.use('/posts', postRoutes);
 app.use('/queue', queueRoutes);
 app.use('/comments', commentRoutes);
+app.use('/api/reels', reelRoutes);
+app.use('/api/reels', reelUploadRoutes);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Fallback route to serve index.html for root URL

@@ -1,0 +1,72 @@
+[
+  {
+    "mood": "happy",
+    "reels": [
+      {
+        "id": "1",
+        "uri": "https://www.w3schools.com/html/mov_bbb.mp4",
+        "caption": "Sunsets and vibes 🌅✨",
+        "music": "Original sound - @sunnyvibes",
+        "likeCount": 230,
+        "comments": [
+          { "id": "c1", "text": "This is 🔥" },
+          { "id": "c2", "text": "Insane visuals!" }
+        ],
+        "user": {
+          "username": "sunnyvibes",
+          "profilePic": "https://randomuser.me/api/portraits/women/1.jpg"
+        }
+      },
+      {
+        "id": "4",
+        "uri": "https://www.w3schools.com/html/movie.mp4",
+        "caption": "Smiles are contagious 😊",
+        "music": "Happy beat - @joyfuljoe",
+        "likeCount": 198,
+        "comments": [
+          { "id": "c3", "text": "Feeling the joy!" },
+          { "id": "c4", "text": "Love this energy 💛" }
+        ],
+        "user": {
+          "username": "joyfuljoe",
+          "profilePic": "https://randomuser.me/api/portraits/men/4.jpg"
+        }
+      }
+    ]
+  },
+  {
+    "mood": "angry",
+    "reels": [
+      {
+        "id": "2",
+        "uri": "https://www.w3schools.com/html/movie.mp4",
+        "caption": "City lights and late nights 🌃",
+        "music": "Original sound - @citylover",
+        "likeCount": 145,
+        "comments": [
+          { "id": "c5", "text": "Love the city vibes!" },
+          { "id": "c6", "text": "Where is this place?" }
+        ],
+        "user": {
+          "username": "citylover",
+          "profilePic": "https://randomuser.me/api/portraits/men/2.jpg"
+        }
+      },
+      {
+        "id": "5",
+        "uri": "https://www.w3schools.com/html/mov_bbb.mp4",
+        "caption": "Late night drives with you 🚗❤",
+        "music": "Love vibes - @romancer",
+        "likeCount": 312,
+        "comments": [
+          { "id": "c7", "text": "This is love 😍" },
+          { "id": "c8", "text": "Perfect reel" }
+        ],
+        "user": {
+          "username": "romancer",
+          "profilePic": "https://randomuser.me/api/portraits/women/5.jpg"
+        }
+      }
+    ]
+  }
+]

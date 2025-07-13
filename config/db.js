@@ -2,7 +2,7 @@
 const mongoose = require('mongoose');
 
 const connectDB = () => {
-  const uri = process.env.MONGO_URI || 'mongodb://localhost:27017/touch';
+  const uri = process.env.MONGO_URI;
   return mongoose.connect(uri);      
 };
 

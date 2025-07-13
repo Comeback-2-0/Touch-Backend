@@ -4,7 +4,6 @@ const connectDB = require("./config/db"); // centralised connection helper
 const app = require("./app"); // Express instance
 const http = require("http");
 const { Server } = require("socket.io");
-const cors = require("cors");
 
 const PORT = process.env.PORT || 3333;
 

@@ -98,7 +98,8 @@ exports.createPost = async (req, res) => {
     let imageUrl = null;
 
     if (req.file) {
-      imageUrl = `https://api.comeback.website/uploads/${req.file.filename}`;
+      const baseDomain = process.env.BASE_DOMAIN;
+      imageUrl = `https://${baseDomain}/uploads/${req.file.filename}`;
     }
 
     const newPost = new Post({
