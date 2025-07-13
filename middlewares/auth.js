@@ -1,11 +1,20 @@
-// middlewares/auth.js
-const jwt = require('jsonwebtoken');
+const jwt = require("jsonwebtoken");
+const User = require("../models/User");
 
-module.exports = function (req, res, next) {
-  // TODO: Extract token from Authorization header (e.g., "Bearer <token>")
-  // TODO: Verify token using jwt.verify with your JWT secret
-  // TODO: If valid, attach user info to req.user; if not, return res.status(401) (Unauthorized)
-  
-  // Placeholder: skip verification for now
-  next();
+const authMiddleware = async (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ error: "No token" });
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    req.user = user;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: "Invalid token" });
+  }
 };
+
+module.exports = authMiddleware;

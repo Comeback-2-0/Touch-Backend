@@ -1,16 +1,33 @@
-// routes/userRoutes.js
 const express = require('express');
 const router = express.Router();
-const userController = require('../controllers/userController');
-const auth = require('../middlewares/auth');  // JWT auth middleware (placeholder)
+const auth = require('../middlewares/auth');
+const User = require('../models/User');
 
-// Public routes (no auth)
-router.post('/register', userController.register);   // User registration
-router.post('/login',    userController.login);      // User login (returns JWT on success)
+// ✅ Import all controllers
+const {
+  register,
+  login,
+  getProfile,
+  updateProfile,
+  findOrCreateUser,
+  getUserByEmail,
+  createUser,
+} = require('../controllers/userController');
 
-// Protected routes (require JWT auth middleware)
-router.get('/profile',    auth, userController.getProfile);    // Get current user's profile
-router.put('/profile',    auth, userController.updateProfile); // Update profile details
-// (Additional routes like password reset, list of moods, etc., can be added here)
+// 🔐 Google OAuth login/signup
+router.post('/auth/google', findOrCreateUser);
+
+// 🧾 Manual Auth Routes
+router.post('/register', register);  // User registration
+router.post('/login', login);        // Manual login → returns JWT
+
+// 🛡️ Protected Profile Routes
+router.get('/profile', auth, getProfile);       // Get profile
+router.put('/profile', auth, updateProfile);    // Update profile
+
+// 🌐 Additional User Utilities
+router.get('/user/:email', getUserByEmail);     // Find user by email
+router.post('/user', createUser);               // Create user (used by admin/panel maybe)
 
 module.exports = router;
+

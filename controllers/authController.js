@@ -1,20 +1,23 @@
 const { OAuth2Client } = require('google-auth-library');
-const User = require('../models/User'); // You'll create this
-const client = new OAuth2Client('YOUR_WEB_CLIENT_ID');
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID); // ✅ Use .env
 
 const googleSignIn = async (req, res) => {
   const { idToken } = req.body;
 
   try {
+    // 🔐 Verify Google ID Token
     const ticket = await client.verifyIdToken({
       idToken,
-      audience: '160562514921-n7apc9k12tliqgni4ri10k5901qpvpmr.apps.googleusercontent.com',
+      audience: process.env.GOOGLE_CLIENT_ID,
     });
 
     const payload = ticket.getPayload();
-
     const { name, email, picture, sub } = payload;
 
+    // 👤 Check or Create User
     let user = await User.findOne({ email });
 
     if (!user) {
@@ -22,15 +25,26 @@ const googleSignIn = async (req, res) => {
         name,
         email,
         photo: picture,
-        uid: sub,
+        uid: sub, // optional
       });
+      console.log('🆕 New user created:', email);
+    } else {
+      console.log('✅ Existing user:', email);
     }
 
-    return res.status(200).json({ user });
+    // 🔑 Create JWT
+    const token = jwt.sign(
+      { id: user._id, email: user.email, name: user.name },
+      process.env.JWT_SECRET || 'dev-secret-key',
+      { expiresIn: '7d' }
+    );
+
+    res.status(200).json({ token, user });
+
   } catch (err) {
-    console.error('Google Sign-In error:', err);
-    return res.status(401).json({ error: 'Invalid token' });
+    console.error('❌ Google Sign-In Error:', err.message);
+    res.status(401).json({ error: 'Invalid token or server error' });
   }
 };
 
-module.exports = { googleSignIn };
+module.exports = { googleSignInh };
