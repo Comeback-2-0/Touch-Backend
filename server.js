@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 3333;
     console.log("✅ MongoDB connected");
 
     // ⏰ Start cron jobs
-    require('./utils/cron');
+    require("./utils/cron");
     console.log("🕒 Cron job initialized");
 
     // 2️⃣ Start the HTTP server ----------------------------------------------
@@ -54,14 +54,17 @@ const PORT = process.env.PORT || 3333;
     );
 
     // 3️⃣ Graceful shutdown handlers -----------------------------------------
-    const gracefulExit = () => {
+    const gracefulExit = async () => {
       console.log("\n⏳ Shutting down gracefully...");
-      httpServer.close(() => {
-        require("mongoose").connection.close(false, () => {
-          console.log("🛑 MongoDB connection closed");
-          process.exit(0);
-        });
-      });
+      try {
+        await httpServer.close(); // close HTTP server first
+        await require("mongoose").connection.close(); // close MongoDB connection
+        console.log("🛑 MongoDB connection closed");
+        process.exit(0);
+      } catch (err) {
+        console.error("❌ Error during shutdown:", err);
+        process.exit(1);
+      }
     };
 
     process.on("SIGINT", gracefulExit); // Ctrl-C
