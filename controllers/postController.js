@@ -1,6 +1,7 @@
 // app/controllers/postController.js
 const Post = require("../models/Post");
 const Comment = require("../models/Comment");
+const uploadToSpaces = require('../utils/uploadToSpaces');
 
 exports.getApprovedPosts = async (req, res) => {
   const posts = await Post.find({
@@ -98,8 +99,11 @@ exports.createPost = async (req, res) => {
     let imageUrl = null;
 
     if (req.file) {
-      const baseDomain = process.env.BASE_DOMAIN;
-      imageUrl = `https://${baseDomain}/uploads/${req.file.filename}`;
+      imageUrl = await uploadToSpaces(
+        req.file.buffer,
+        req.file.originalname,
+        req.file.mimetype
+      );
     }
 
     const newPost = new Post({
