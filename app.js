@@ -1,6 +1,7 @@
 // app.js (Express initialization)
 require('dotenv').config();
 const express = require('express');
+const healthRoutes = require('./routes/healthRoutes');
 const postRoutes = require('./routes/postRoutes');
 const authRoutes = require('./routes/auth');
 const communityRoutes = require('./routes/communityRoutes');
@@ -18,6 +19,7 @@ const app = express();
 app.use(express.json());                        // Body parser for JSON
 
 app.use(bodyParser.json()); // to parse JSON
+app.use('/health', healthRoutes());
 app.use('/auth', authRoutes);
 app.use('/messages', messageRoutes);
 app.use('/communities', communityRoutes);
