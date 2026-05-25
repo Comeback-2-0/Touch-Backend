@@ -8,7 +8,7 @@ const Comment = require('../models/commentModel');
 exports.getMoodBasedReels = async (req, res) => {
   try {
     const mood = req.query.mood;
-    const userId = req.query.userId;
+    const userId = req.user.id;
     const page = parseInt(req.query.page) || 1;
     const limit = 5;
 
@@ -73,7 +73,7 @@ exports.getMoodBasedReels = async (req, res) => {
 };
 exports.getMoodPreferencesForUser = async (req, res) => {
   try {
-    const { userId } = req.query;
+    const userId = req.user.id;
     if (!userId) return res.status(400).json({ error: 'userId required' });
 
     const prefs = await MoodPreferences.find({ userId });
@@ -98,7 +98,8 @@ function shuffleArray(arr) {
 }
 exports.recordWatchTime = async (req, res) => {
   try {
-    const { userId, reelId, mood, duration } = req.body;
+    const { reelId, mood, duration } = req.body;
+    const userId = req.user.id;
 if (!userId || !reelId || !mood || typeof duration !== 'number' || typeof mood !== 'string') {
   return res.status(400).json({ message: 'Missing or invalid parameters' });
 }
@@ -187,7 +188,8 @@ exports.getAllPosts = async (req, res) => {
 // Like a reel
 exports.likeReel = async (req, res) => {
   try {
-    const { reelId, userId } = req.body;
+    const { reelId } = req.body;
+    const userId = req.user.id;
 
     // Check if user has already liked the reel
     const existingLike = await Like.findOne({ reelId, userId });
@@ -217,7 +219,8 @@ exports.likeReel = async (req, res) => {
 // Save a reel
 exports.saveReel = async (req, res) => {
   try {
-    const { reelId, userId } = req.body;
+    const { reelId } = req.body;
+    const userId = req.user.id;
 
     // Check if user has already saved the reel
     const existingSave = await Save.findOne({ reelId, userId });
@@ -246,7 +249,8 @@ exports.saveReel = async (req, res) => {
 // Comment on a reel
 exports.commentOnReel = async (req, res) => {
   try {
-    const { reelId, userId, text } = req.body;
+    const { reelId, text } = req.body;
+    const userId = req.user.id;
 
     console.log('Comment Data:', { reelId, userId, text });
     const newComment = new Comment({ reelId, userId, text });

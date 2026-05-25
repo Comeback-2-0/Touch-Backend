@@ -6,6 +6,7 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const Reel = require('../models/Reel');
 const reelController = require('../controllers/reelController');
+const auth = require('../middlewares/auth');
 const router = express.Router();
 
 // Storage config (video saved locally)
@@ -27,9 +28,10 @@ const upload = multer({ storage });
 
 // @route   POST /api/reels/upload
 // @desc    Upload a new reel
-router.post('/upload', upload.single('video'), async (req, res) => {
+router.post('/upload', auth, upload.single('video'), async (req, res) => {
   try {
-    const { caption, mood, creatorId, hashtags  } = req.body;
+    const { caption, mood, hashtags  } = req.body;
+    const creatorId = req.user.id;
     if (!req.file) {
       return res.status(400).json({ error: 'No video file uploaded' });
     }
@@ -55,9 +57,9 @@ router.post('/upload', upload.single('video'), async (req, res) => {
   }
 });
 
-router.post('/like', reelController.likeReel);
-router.post('/save', reelController.saveReel); 
-router.post('/:reelId/comments', reelController.commentOnReel); 
+router.post('/like', auth, reelController.likeReel);
+router.post('/save', auth, reelController.saveReel); 
+router.post('/:reelId/comments', auth, reelController.commentOnReel); 
 router.get('/:reelId/comments', reelController.getComments); 
 
 module.exports = router;

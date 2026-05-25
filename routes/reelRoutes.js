@@ -10,16 +10,17 @@ const MoodPreferences = require('../models/MoodPreferences');
 
 
 const asyncHandler = require('../utils/asyncHandler');
+const auth = require('../middlewares/auth');
 
-router.get('/feed', asyncHandler(getMoodBasedReels));
+router.get('/feed', auth, asyncHandler(getMoodBasedReels));
 
-router.post('/watch', recordWatchTime);
+router.post('/watch', auth, recordWatchTime);
 
 const { getMoodPreferencesForUser } = require('../controllers/reelController');
-router.get('/user-moods', getMoodPreferencesForUser);
-router.get('/moods', async (req, res) => {
+router.get('/user-moods', auth, getMoodPreferencesForUser);
+router.get('/moods', auth, async (req, res) => {
   try {
-    const { userId } = req.query;
+    const userId = req.user.id;
     const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
 
     const pref = await MoodPreferences.findOne({ userId });

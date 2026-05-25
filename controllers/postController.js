@@ -14,7 +14,7 @@ exports.getApprovedPosts = async (req, res) => {
 };
 
 exports.likePost = async (req, res) => {
-  const { userId } = req.body;
+  const userId = req.user.id;
   const post = await Post.findById(req.params.postId);
 
   if (!post) return res.status(404).json({ error: "Post not found" });
@@ -43,7 +43,7 @@ exports.likePost = async (req, res) => {
 };
 
 exports.dislikePost = async (req, res) => {
-  const { userId } = req.body;
+  const userId = req.user.id;
   const post = await Post.findById(req.params.postId);
 
   if (!post) return res.status(404).json({ error: "Post not found" });
@@ -72,7 +72,8 @@ exports.dislikePost = async (req, res) => {
 };
 
 exports.createComment = async (req, res) => {
-  const { text, userId } = req.body;
+  const { text } = req.body;
+  const userId = req.user.id;
   const comment = new Comment({ postId: req.params.postId, text, userId });
   await comment.save();
 
@@ -84,7 +85,8 @@ exports.createComment = async (req, res) => {
 };
 
 exports.replyToComment = async (req, res) => {
-  const { text, userId } = req.body;
+  const { text } = req.body;
+  const userId = req.user.id;
   const comment = await Comment.findById(req.params.commentId);
 
   comment.replies.push({ text, userId });

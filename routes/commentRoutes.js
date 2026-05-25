@@ -10,25 +10,26 @@ const {
   reportReply,
   getReplies
 } = require('../controllers/commentController');
+const auth = require('../middlewares/auth');
 
 // POST /comments/:commentId/replies
-router.post('/:commentId/replies', addReply);
+router.post('/:commentId/replies', auth, addReply);
 
 // GET /comments/:commentId/replies
 router.get('/:commentId/replies', getReplies);
 
 // POST /comments/:commentId/like
-router.post('/:commentId/like', likeComment);
+router.post('/:commentId/like', auth, likeComment);
 // POST /comments/:commentId/dislike
-router.post('/:commentId/dislike', dislikeComment);
+router.post('/:commentId/dislike', auth, dislikeComment);
 // POST /comments/:commentId/report
-router.post('/:commentId/report', reportComment);
+router.post('/:commentId/report', auth, reportComment);
 
 // POST /comments/:commentId/replies/:replyId/like
-router.post('/:commentId/replies/:replyId/like', likeReply);
+router.post('/:commentId/replies/:replyId/like', auth, likeReply);
 // POST /comments/:commentId/replies/:replyId/dislike
-router.post('/:commentId/replies/:replyId/dislike', dislikeReply);
+router.post('/:commentId/replies/:replyId/dislike', auth, dislikeReply);
 // POST /comments/:commentId/replies/:replyId/report
-router.post('/:commentId/replies/:replyId/report', reportReply);
+router.post('/:commentId/replies/:replyId/report', auth, reportReply);
 
 module.exports = router;

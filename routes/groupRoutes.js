@@ -6,11 +6,13 @@ const {
   joinGroup,
   searchGroups,
 } = require('../controllers/groupController');
+const auth = require('../middlewares/auth');
 const router = express.Router();
 
+router.get('/joined/me', auth, getJoinedGroups);
 router.get('/joined/:userId', getJoinedGroups);
 router.get('/trending', getTrendingGroups);
 router.get('/search', searchGroups);
-router.post('/:groupId/join', joinGroup);
+router.post('/:groupId/join', auth, joinGroup);
 
 module.exports = router;

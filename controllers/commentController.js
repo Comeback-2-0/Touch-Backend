@@ -28,7 +28,8 @@ exports.getReplies = async (req, res) => {
 
 // POST a new reply to a comment
 exports.addReply = async (req, res) => {
-  const { text, userId } = req.body;
+  const { text } = req.body;
+  const userId = req.user.id;
   const comment = await Comment.findById(req.params.commentId);
   comment.replies.push({ text, userId });
   await comment.save();
@@ -38,7 +39,7 @@ exports.addReply = async (req, res) => {
 // Helper to update a “likes” or “dislikes” or “reportedBy” array
 async function updateCommentField(req, res, type, action) {
   const { commentId, replyId } = req.params;
-  const { userId } = req.body;
+  const userId = req.user.id;
 
   const comment = await Comment.findById(commentId);
   if (!comment) return res.status(404).json({ error: 'Comment not found' });

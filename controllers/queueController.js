@@ -9,7 +9,7 @@ exports.getQueue = async (req, res) => {
 };
 
 exports.voteQueuePost = async (req, res) => {
-  const { userId } = req.body;
+  const userId = req.user.id;
   const post = await Post.findById(req.params.postId);
   const hasVoted = post.votedBy.includes(userId);
   if (hasVoted) {
@@ -25,7 +25,7 @@ exports.voteQueuePost = async (req, res) => {
 
 
 exports.reportQueuePost = async (req, res) => {
-  const { userId } = req.body;
+  const userId = req.user.id;
   const post = await Post.findById(req.params.postId);
 
   if (!post.reportedBy.includes(userId)) {
@@ -38,7 +38,7 @@ exports.reportQueuePost = async (req, res) => {
 };
 
 exports.undoReportQueuePost = async (req, res) => {
-  const { userId } = req.body;
+  const userId = req.user.id;
 
   const post = await Post.findById(req.params.postId);
   if (!post) return res.status(404).json({ error: 'Post not found' });

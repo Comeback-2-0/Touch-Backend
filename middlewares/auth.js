@@ -1,11 +1,24 @@
-// middlewares/auth.js
-const jwt = require('jsonwebtoken');
+const { verifyAccessToken } = require('../services/tokenService');
 
 module.exports = function (req, res, next) {
-  // TODO: Extract token from Authorization header (e.g., "Bearer <token>")
-  // TODO: Verify token using jwt.verify with your JWT secret
-  // TODO: If valid, attach user info to req.user; if not, return res.status(401) (Unauthorized)
-  
-  // Placeholder: skip verification for now
-  next();
+  const header = req.headers.authorization || req.headers.Authorization;
+
+  if (!header || !header.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authorization bearer token required' });
+  }
+
+  const token = header.slice('Bearer '.length).trim();
+
+  try {
+    const decoded = verifyAccessToken(token);
+    req.user = {
+      id: decoded.sub,
+      email: decoded.email,
+      role: decoded.role || 'user',
+      sessionId: decoded.sessionId,
+    };
+    return next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
 };

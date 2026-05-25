@@ -7,13 +7,14 @@ const {
   undoReportQueuePost,
   promoteTopPost,
 } = require('../controllers/queueController');
+const auth = require('../middlewares/auth');
 const router = express.Router();
 
-router.get('/:groupId', getQueue);
-router.post('/:postId/vote', voteQueuePost);
-router.post('/:postId/report', reportQueuePost);
-router.post('/:postId/unreport', undoReportQueuePost);
-router.post('/promote/:groupId', promoteTopPost);
+router.get('/:groupId', auth, getQueue);
+router.post('/:postId/vote', auth, voteQueuePost);
+router.post('/:postId/report', auth, reportQueuePost);
+router.post('/:postId/unreport', auth, undoReportQueuePost);
+router.post('/promote/:groupId', auth, promoteTopPost);
 
 
 module.exports = router;
