@@ -1,16 +1,18 @@
-// routes/userRoutes.js
 const express = require('express');
-const router = express.Router();
 const userController = require('./user.controller');
-const auth = require('../../middleware/auth');  // JWT auth middleware (placeholder)
+const auth = require('../../middleware/auth');
 
-// Public routes (no auth)
-router.post('/register', userController.register);   // User registration
-router.post('/login',    userController.login);      // User login (returns JWT on success)
+const router = express.Router();
 
-// Protected routes (require JWT auth middleware)
-router.get('/profile',    auth, userController.getProfile);    // Get current user's profile
-router.put('/profile',    auth, userController.updateProfile); // Update profile details
-// (Additional routes like password reset, list of moods, etc., can be added here)
+router.post('/register', userController.register);
+router.post('/login', userController.login);
+
+router.get('/check-username/:username', userController.checkUsername);
+router.post('/complete-profile', auth, userController.completeProfile);
+router.get('/me', auth, userController.getMe);
+router.patch('/me', auth, userController.updateMe);
+
+router.get('/profile', auth, userController.getProfile);
+router.put('/profile', auth, userController.updateProfile);
 
 module.exports = router;

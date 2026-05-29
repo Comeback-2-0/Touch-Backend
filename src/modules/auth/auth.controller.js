@@ -20,9 +20,13 @@ function toPublicUser(user) {
   return {
     _id: user._id,
     uid: user.uid,
+    firebaseUid: user.firebaseUid,
     name: user.name,
     email: user.email,
     photo: user.photo,
+    username: user.username,
+    profilePicture: user.profilePicture,
+    isProfileComplete: user.isProfileComplete,
     role: user.role || 'user',
   };
 }
@@ -72,12 +76,14 @@ const googleSignIn = async (req, res) => {
         name,
         email,
         photo: picture,
+        firebaseUid: sub,
         uid: sub,
         lastLoginAt: new Date(),
       });
     } else {
       user.name = name || user.name;
       user.photo = picture || user.photo;
+      user.firebaseUid = user.firebaseUid || sub;
       user.uid = user.uid || sub;
       user.lastLoginAt = new Date();
       await user.save();

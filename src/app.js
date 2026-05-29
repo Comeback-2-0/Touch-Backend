@@ -11,6 +11,8 @@ const queueRoutes = require('./modules/feed/queue.routes');
 const commentRoutes = require('./modules/comments/comment.routes');
 const groupRoutes = require('./modules/communities/group.routes');
 const reelUploadRoutes = require('./modules/reels/reel-upload.routes');
+const userRoutes = require('./modules/users/user.routes');
+const uploadRoutes = require('./modules/uploads/upload.routes');
 const path = require('path');
 const bodyParser = require('body-parser');
 
@@ -21,6 +23,7 @@ app.use(express.json());                        // Body parser for JSON
 app.use(bodyParser.json()); // to parse JSON
 app.use('/health', healthRoutes());
 app.use('/auth', authRoutes);
+app.use('/users', userRoutes);
 app.use('/messages', messageRoutes);
 app.use('/communities', communityRoutes);
 app.use('/groups', groupRoutes); 
@@ -29,6 +32,7 @@ app.use('/queue', queueRoutes);
 app.use('/comments', commentRoutes);
 app.use('/api/reels', reelRoutes);
 app.use('/api/reels', reelUploadRoutes);
+app.use('/uploads', uploadRoutes());
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Fallback route to serve index.html for root URL
