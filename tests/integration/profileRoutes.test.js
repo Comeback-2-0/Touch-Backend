@@ -83,6 +83,7 @@ test('profile routes complete, retrieve, and update profile using JSON', async (
       method: 'POST',
       headers: { 'content-type': 'application/json', ...authHeader(user) },
       body: JSON.stringify({
+        name: 'Maya Singh',
         username: 'Maya.Touch',
         bio: 'first bio',
         isPrivate: false,
@@ -97,6 +98,7 @@ test('profile routes complete, retrieve, and update profile using JSON', async (
       method: 'PATCH',
       headers: { 'content-type': 'application/json', ...authHeader(user) },
       body: JSON.stringify({
+        name: 'Maya Updated',
         username: 'maya_new',
         bio: 'second bio',
         isPrivate: true,
@@ -111,6 +113,7 @@ test('profile routes complete, retrieve, and update profile using JSON', async (
     assert.deepEqual(await me.json(), {
       user: {
         id: user._id.toString(),
+        name: 'Maya Updated',
         username: 'maya_new',
         bio: 'second bio',
         profilePicture: 'https://cdn.example.com/second.jpg',

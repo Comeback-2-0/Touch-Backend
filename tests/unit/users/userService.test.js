@@ -41,6 +41,7 @@ test('completeProfile stores lowercase username and marks profile complete', asy
   const user = await createUser();
 
   const result = await userService.completeProfile(user._id.toString(), {
+    name: 'Maya Singh',
     username: 'Touch.User_1',
     bio: 'hello',
     isPrivate: true,
@@ -48,6 +49,7 @@ test('completeProfile stores lowercase username and marks profile complete', asy
     profilePicturePublicId: 'touch/profile-pictures/new',
   });
 
+  assert.equal(result.name, 'Maya Singh');
   assert.equal(result.username, 'touch.user_1');
   assert.equal(result.bio, 'hello');
   assert.equal(result.isPrivate, true);
@@ -96,6 +98,7 @@ test('getCurrentUser returns only public profile fields', async () => {
     'id',
     'isPrivate',
     'isProfileComplete',
+    'name',
     'postsCount',
     'profilePicture',
     'username',
@@ -111,6 +114,7 @@ test('updateProfile updates JSON profile fields', async () => {
   const user = await createUser({ username: 'oldname', profilePicturePublicId: 'old-id' });
 
   const result = await userService.updateProfile(user._id.toString(), {
+    name: 'Updated Name',
     username: 'New.Name',
     bio: 'updated bio',
     isPrivate: true,
@@ -120,6 +124,7 @@ test('updateProfile updates JSON profile fields', async () => {
     deleteProfileImage: async () => {},
   });
 
+  assert.equal(result.name, 'Updated Name');
   assert.equal(result.username, 'new.name');
   assert.equal(result.bio, 'updated bio');
   assert.equal(result.isPrivate, true);

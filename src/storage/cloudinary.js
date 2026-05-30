@@ -6,11 +6,11 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-function uploadBuffer(file) {
+function uploadBuffer(file, folder) {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
-        folder: process.env.CLOUDINARY_PROFILE_FOLDER || 'touch/profile-pictures',
+        folder,
         resource_type: 'image',
       },
       (error, result) => {
@@ -27,7 +27,15 @@ function uploadBuffer(file) {
 }
 
 async function uploadProfileImage(file) {
-  const result = await uploadBuffer(file);
+  const result = await uploadBuffer(file, process.env.CLOUDINARY_PROFILE_FOLDER || 'touch/profile-pictures');
+  return {
+    url: result.secure_url,
+    publicId: result.public_id,
+  };
+}
+
+async function uploadFeedbackImage(file) {
+  const result = await uploadBuffer(file, process.env.CLOUDINARY_FEEDBACK_FOLDER || 'touch/feedback-screenshots');
   return {
     url: result.secure_url,
     publicId: result.public_id,
@@ -41,5 +49,6 @@ async function deleteProfileImage(publicId) {
 
 module.exports = {
   uploadProfileImage,
+  uploadFeedbackImage,
   deleteProfileImage,
 };

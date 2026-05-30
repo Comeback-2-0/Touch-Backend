@@ -13,6 +13,7 @@ const groupRoutes = require('./modules/communities/group.routes');
 const reelUploadRoutes = require('./modules/reels/reel-upload.routes');
 const userRoutes = require('./modules/users/user.routes');
 const uploadRoutes = require('./modules/uploads/upload.routes');
+const feedbackRoutes = require('./modules/feedback/feedback.routes');
 const path = require('path');
 const bodyParser = require('body-parser');
 
@@ -33,6 +34,7 @@ app.use('/comments', commentRoutes);
 app.use('/api/reels', reelRoutes);
 app.use('/api/reels', reelUploadRoutes);
 app.use('/uploads', uploadRoutes());
+app.use('/feedback', feedbackRoutes);
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Fallback route to serve index.html for root URL

@@ -9,6 +9,7 @@ function httpError(message, statusCode) {
 function publicProfile(user) {
   return {
     id: user._id.toString(),
+    name: user.name || '',
     username: user.username || '',
     bio: user.bio || '',
     profilePicture: user.profilePicture || '',
@@ -40,6 +41,9 @@ function pickProfileFields(input, { requireUsername = false } = {}) {
   const username = validateUsername(input.username, { required: requireUsername });
 
   if (username) update.username = username;
+  if (Object.prototype.hasOwnProperty.call(input, 'name')) {
+    update.name = typeof input.name === 'string' ? input.name.trim() : '';
+  }
   if (Object.prototype.hasOwnProperty.call(input, 'bio')) update.bio = input.bio || '';
   if (Object.prototype.hasOwnProperty.call(input, 'isPrivate')) {
     const value = toBoolean(input.isPrivate);
