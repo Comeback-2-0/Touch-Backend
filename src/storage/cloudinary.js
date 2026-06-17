@@ -42,6 +42,17 @@ async function uploadFeedbackImage(file) {
   };
 }
 
+async function uploadPostImage(file) {
+  const result = await uploadBuffer(file, process.env.CLOUDINARY_POST_FOLDER || 'touch/posts');
+  return {
+    url: result.secure_url,
+    publicId: result.public_id,
+    width: result.width || 0,
+    height: result.height || 0,
+    format: result.format || '',
+  };
+}
+
 async function deleteProfileImage(publicId) {
   if (!publicId) return null;
   return cloudinary.uploader.destroy(publicId, { resource_type: 'image' });
@@ -50,5 +61,6 @@ async function deleteProfileImage(publicId) {
 module.exports = {
   uploadProfileImage,
   uploadFeedbackImage,
+  uploadPostImage,
   deleteProfileImage,
 };
