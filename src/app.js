@@ -9,12 +9,14 @@ const communityRoutes = require('./modules/communities/community.routes');
 const messageRoutes = require('./modules/chat/message.routes');
 const reelRoutes = require('./modules/reels/reel.routes');
 const queueRoutes = require('./modules/feed/queue.routes');
+const feedEventRoutes = require('./modules/feed/feed-event.routes');
 const commentRoutes = require('./modules/comments/comment.routes');
 const groupRoutes = require('./modules/communities/group.routes');
 const reelUploadRoutes = require('./modules/reels/reel-upload.routes');
 const userRoutes = require('./modules/users/user.routes');
 const uploadRoutes = require('./modules/uploads/upload.routes');
 const feedbackRoutes = require('./modules/feedback/feedback.routes');
+const notificationRoutes = require('./modules/notifications/notification.routes');
 const path = require('path');
 const bodyParser = require('body-parser');
 
@@ -32,11 +34,13 @@ app.use('/groups', groupRoutes);
 app.use('/posts', publicPostRoutes());
 app.use('/legacy/community-posts', legacyPostRoutes);
 app.use('/queue', queueRoutes);
+app.use('/feed/events', feedEventRoutes());
 app.use('/comments', commentRoutes);
 app.use('/api/reels', reelRoutes);
 app.use('/api/reels', reelUploadRoutes);
 app.use('/uploads', uploadRoutes());
 app.use('/feedback', feedbackRoutes);
+app.use('/notifications', notificationRoutes);
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Fallback route to serve index.html for root URL

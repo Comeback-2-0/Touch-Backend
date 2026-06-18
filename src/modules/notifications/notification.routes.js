@@ -1,12 +1,13 @@
-// routes/notificationRoutes.js
 const express = require('express');
-const router  = express.Router();
+const router = express.Router();
 const notificationController = require('./notification.controller');
+const auth = require('../../middleware/auth');
 
-// fetch logged-in user’s notifications
+router.use(auth);
+
 router.get('/', notificationController.getMyNotifications);
-
-// mark a notification as seen
+router.get('/preferences', notificationController.getPreferences);
+router.put('/preferences', notificationController.updatePreferences);
 router.patch('/:id/seen', notificationController.markAsSeen);
 
 module.exports = router;

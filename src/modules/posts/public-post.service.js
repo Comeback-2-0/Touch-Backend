@@ -1,6 +1,5 @@
-const mongoose = require('mongoose');
 const PublicPost = require('./public-post.model');
-const User = require('../users/user.model');
+const defaultUserRepository = require('../users/user.repository');
 const cloudinaryStorage = require('../../storage/cloudinary');
 
 const ALLOWED_POST_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -52,11 +51,15 @@ function toAuthorSnapshot(user) {
   };
 }
 
+function entityId(value) {
+  return String(value.id || value._id || value);
+}
+
 function toPublicPost(post) {
   return {
     id: post._id.toString(),
     author: {
-      id: post.authorId.toString(),
+      id: String(post.authorId),
       ...post.authorSnapshot,
     },
     text: post.text || '',
@@ -70,8 +73,19 @@ function toPublicPost(post) {
   };
 }
 
-async function getAuthor(userId) {
-  const user = await User.findById(userId);
+function createDefaultPostRepository() {
+  return {
+    create(input) {
+      return PublicPost.create(input);
+    },
+    find(query) {
+      return PublicPost.find(query);
+    },
+  };
+}
+
+async function getAuthor(userId, userRepository) {
+  const user = await userRepository.findById(userId);
   if (!user) {
     throw httpError('User not found', 404);
   }
@@ -81,13 +95,16 @@ async function getAuthor(userId) {
 async function createPost(payload, options = {}) {
   const userId = options.user?.id;
   const storage = options.storage || cloudinaryStorage;
+  const userRepository = options.userRepository || defaultUserRepository;
+  const postRepository = options.postRepository || createDefaultPostRepository();
   const text = normalizeText(payload.text);
   const files = options.files || (options.file ? [options.file] : []);
 
   validatePostImages(files);
   validatePostInput({text, files});
 
-  const user = await getAuthor(userId);
+  const user = await getAuthor(userId, userRepository);
+  const authorId = entityId(user);
   const media = [];
 
   for (const file of files) {
@@ -106,13 +123,13 @@ async function createPost(payload, options = {}) {
     }
   }
 
-  const post = await PublicPost.create({
-    authorId: user._id,
+  const post = await postRepository.create({
+    authorId,
     authorSnapshot: toAuthorSnapshot(user),
     text,
     media,
   });
-  await User.updateOne({_id: user._id}, {$inc: {postsCount: 1}});
+  await userRepository.incrementPostsCount(authorId, 1);
   return toPublicPost(post);
 }
 
@@ -160,7 +177,7 @@ async function listFeed(query = {}) {
 }
 
 async function listUserPosts(userId, query = {}) {
-  if (!mongoose.Types.ObjectId.isValid(userId)) {
+  if (!userId || typeof userId !== 'string') {
     throw httpError('Invalid user id', 400);
   }
   return listPosts({...query, authorId: userId});

@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const Community = require('./community.model');
+const communityRepository = require('./community.repository');
 
 router.get('/', async (req, res) => {
   try {
-    const communities = await Community.find({});
+    const communities = await communityRepository.listAll();
     res.json(communities);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch communities' });

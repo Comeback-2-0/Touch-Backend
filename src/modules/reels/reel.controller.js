@@ -1,28 +1,19 @@
 // controllers/reelController.js
 const Reel = require('./reel.model');
-const MoodPreferences = require('./mood-preferences.model');
-const Save = require('./save.model'); 
-const Like = require('./like.model');
 const Comment = require('./reel-comment.model');
+const { createEngagementRepository } = require('../graph/engagement.repository');
+const { createAstraEventRepository } = require('../feed/astra-event.repository');
 
 exports.getMoodBasedReels = async (req, res) => {
   try {
     const mood = req.query.mood;
-    const userId = req.user.id;
     const page = parseInt(req.query.page) || 1;
     const limit = 5;
-
-    const userPref = await MoodPreferences.findOne({ userId }) || {
-      likedCreators: [],
-      watchHistory: [],
-    };
 
     const allReels = await Reel.find({ mood: mood });
 
     const scoredReels = allReels.map(reel => {
       let score = 0;
-
-      if (userPref.likedCreators.includes(reel.creatorId)) score += 10;
 
       score += (reel.likes * 2) + (reel.comments * 1.5) + (reel.saves * 3) + (reel.shares * 4);
 
@@ -30,22 +21,15 @@ exports.getMoodBasedReels = async (req, res) => {
       if (hoursOld < 24) score += 5;
       else if (hoursOld < 72) score += 2;
 
-      const moodWatchTime = userPref.watchHistory?.filter(r => r.mood === mood)
-        .reduce((acc, r) => acc + (r.duration || 0), 0);
-      score += (moodWatchTime / 60) * 1.5; // 1.5 pts per min watched of this mood
-
       score += Math.random() * 3; // small randomness
 
       return { ...reel._doc, score };
     });
 
-    const watchedIds = userPref.watchHistory.map(r => r.reelId?.toString?.());
-    const unseenReels = scoredReels.filter(r => !watchedIds.includes(r._id.toString()));
-
-    unseenReels.sort((a, b) => b.score - a.score);
+    scoredReels.sort((a, b) => b.score - a.score);
 
     const start = (page - 1) * limit;
-    const paginated = unseenReels.slice(start, start + limit);
+    const paginated = scoredReels.slice(start, start + limit);
 
     const formatted = paginated.map((r) => {
       let cleanPath = r.videoPath?.replace(/.*uploads\//, '');
@@ -76,15 +60,8 @@ exports.getMoodPreferencesForUser = async (req, res) => {
     const userId = req.user.id;
     if (!userId) return res.status(400).json({ error: 'userId required' });
 
-    const prefs = await MoodPreferences.find({ userId });
-    const sortedMoods = prefs
-      .sort((a, b) => (b.watchTime || 0) - (a.watchTime || 0)) // descending
-      .map(p => p.mood);
-
     const allMoods = await Reel.distinct('mood');
-    const remainingMoods = allMoods.filter(m => !sortedMoods.includes(m));
-
-    const final = [...sortedMoods.slice(0, 2), ...shuffleArray(remainingMoods)];
+    const final = shuffleArray(allMoods);
 
     res.json(final);
   } catch (err) {
@@ -96,38 +73,52 @@ exports.getMoodPreferencesForUser = async (req, res) => {
 function shuffleArray(arr) {
   return arr.sort(() => 0.5 - Math.random());
 }
-exports.recordWatchTime = async (req, res) => {
-  try {
-    const { reelId, mood, duration } = req.body;
-    const userId = req.user.id;
-if (!userId || !reelId || !mood || typeof duration !== 'number' || typeof mood !== 'string') {
-  return res.status(400).json({ message: 'Missing or invalid parameters' });
+function createReelWatchHandlers({
+  reelModel = Reel,
+  eventRepository,
+} = {}) {
+  const repository = eventRepository || createAstraEventRepository();
+
+  async function recordWatchTime(req, res) {
+    try {
+      const { reelId, mood, duration } = req.body;
+      const userId = req.user.id;
+      if (!userId || !reelId || typeof duration !== 'number' || typeof mood !== 'string') {
+        return res.status(400).json({ message: 'Missing or invalid parameters' });
+      }
+
+      await repository.recordWatchEvent({
+        userId,
+        contentId: reelId,
+        contentType: 'reel',
+        durationMs: duration,
+        completed: false,
+      });
+
+      await reelModel.findByIdAndUpdate(reelId, {
+        $inc: { totalViews: 1, totalWatchTime: duration },
+      });
+
+      return res.status(200).json({ success: true });
+    } catch (err) {
+      return res.status(500).json({ message: 'Failed to record watch time' });
+    }
+  }
+
+  return { recordWatchTime };
 }
 
-    await Reel.findByIdAndUpdate(reelId, {
-      $inc: { totalViews: 1, totalWatchTime: duration },
-    });
+let defaultReelWatchHandlers;
 
-       await MoodPreferences.findOneAndUpdate(
-      { userId },
-      {
-        $push: {
-          watchHistory: {
-            reelId,
-            mood,
-            duration,
-            timestamp: new Date()
-          }
-        }
-      },
-      { upsert: true, new: true }
-    );
-    res.json({ success: true });
-  } catch (err) {
-    console.error('recordWatchTime error:', err);
-    res.status(500).json({ message: 'Failed to record watch time' });
+function getDefaultReelWatchHandlers() {
+  if (!defaultReelWatchHandlers) {
+    defaultReelWatchHandlers = createReelWatchHandlers();
   }
-};
+  return defaultReelWatchHandlers;
+}
+
+exports.createReelWatchHandlers = createReelWatchHandlers;
+exports.recordWatchTime = (req, res) => getDefaultReelWatchHandlers().recordWatchTime(req, res);
 
 // Controller function to handle video upload and metadata saving
 exports.createPost = (req, res) => {
@@ -185,66 +176,73 @@ exports.getAllPosts = async (req, res) => {
   }
 };
 
-// Like a reel
-exports.likeReel = async (req, res) => {
-  try {
-    const { reelId } = req.body;
-    const userId = req.user.id;
+function createReelEngagementHandlers({
+  reelModel = Reel,
+  engagementRepository,
+} = {}) {
+  const repository = engagementRepository || createEngagementRepository();
 
-    // Check if user has already liked the reel
-    const existingLike = await Like.findOne({ reelId, userId });
+  async function likeReel(req, res) {
+    try {
+      const { reelId } = req.body;
+      const userId = req.user.id;
+      if (!reelId) return res.status(400).json({ error: 'reelId is required' });
 
-    if (existingLike) {
-      // If already liked, remove the like
-      await Like.findOneAndDelete({ reelId, userId });
+      const input = { userId, contentId: reelId, contentType: 'reel' };
+      const liked = await repository.hasLiked(input);
 
-      // Decrement the like count in Reel model
-      await Reel.findByIdAndUpdate(reelId, { $inc: { likes: -1 } });
-    } else {
-      // If not liked, add the like
-      const newLike = new Like({ reelId, userId });
-      await newLike.save();
+      if (liked) {
+        await repository.unlikeContent(input);
+        await reelModel.findByIdAndUpdate(reelId, { $inc: { likes: -1 } });
+        return res.status(200).json({ message: 'Like removed successfully', liked: false });
+      }
 
-      // Increment the like count in Reel model
-      await Reel.findByIdAndUpdate(reelId, { $inc: { likes: 1 } });
+      await repository.likeContent(input);
+      await reelModel.findByIdAndUpdate(reelId, { $inc: { likes: 1 } });
+      return res.status(200).json({ message: 'Like added successfully', liked: true });
+    } catch (err) {
+      return res.status(500).json({ error: 'Failed to like reel' });
     }
-
-    res.status(200).json({ message: 'Like toggled successfully' });
-    console.log(`Reel ${reelId} liked by user ${userId}`);
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to like reel', details: err });
   }
-};
 
-// Save a reel
-exports.saveReel = async (req, res) => {
-  try {
-    const { reelId } = req.body;
-    const userId = req.user.id;
+  async function saveReel(req, res) {
+    try {
+      const { reelId } = req.body;
+      const userId = req.user.id;
+      if (!reelId) return res.status(400).json({ error: 'reelId is required' });
 
-    // Check if user has already saved the reel
-    const existingSave = await Save.findOne({ reelId, userId });
+      const input = { userId, contentId: reelId, contentType: 'reel' };
+      const saved = await repository.hasSaved(input);
 
-    if (existingSave) {
-      // If already saved, remove the save
-      await Save.findOneAndDelete({ reelId, userId });
+      if (saved) {
+        await repository.unsaveContent(input);
+        await reelModel.findByIdAndUpdate(reelId, { $inc: { saves: -1 } });
+        return res.status(200).json({ message: 'Save removed successfully', saved: false });
+      }
 
-      // Decrement the save count in Reel model
-      await Reel.findByIdAndUpdate(reelId, { $inc: { saves: -1 } });
-    } else {
-      // If not saved, add the save
-      const newSave = new Save({ reelId, userId });
-      await newSave.save();
-
-      // Increment the save count in Reel model
-      await Reel.findByIdAndUpdate(reelId, { $inc: { saves: 1 } });
+      await repository.saveContent(input);
+      await reelModel.findByIdAndUpdate(reelId, { $inc: { saves: 1 } });
+      return res.status(200).json({ message: 'Save added successfully', saved: true });
+    } catch (err) {
+      return res.status(500).json({ error: 'Failed to save reel' });
     }
-
-    res.status(200).json({ message: 'Save toggled successfully' });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to save reel', details: err });
   }
-};
+
+  return { likeReel, saveReel };
+}
+
+let defaultReelEngagementHandlers;
+
+function getDefaultReelEngagementHandlers() {
+  if (!defaultReelEngagementHandlers) {
+    defaultReelEngagementHandlers = createReelEngagementHandlers();
+  }
+  return defaultReelEngagementHandlers;
+}
+
+exports.createReelEngagementHandlers = createReelEngagementHandlers;
+exports.likeReel = (req, res) => getDefaultReelEngagementHandlers().likeReel(req, res);
+exports.saveReel = (req, res) => getDefaultReelEngagementHandlers().saveReel(req, res);
 
 // Comment on a reel
 exports.commentOnReel = async (req, res) => {
