@@ -20,6 +20,7 @@ function createResponse() {
 
 test('google sign-in creates users through the configured user repository', async () => {
   const calls = [];
+  const emails = [];
   const controller = createAuthController({
     googleClient: {
       async verifyIdToken() {
@@ -54,6 +55,9 @@ test('google sign-in creates users through the configured user repository', asyn
       accessToken: 'access',
       refreshToken: 'refresh',
     }),
+    emailService: {
+      sendWelcomeEmail: async payload => emails.push(payload),
+    },
   });
 
   const res = createResponse();
@@ -66,10 +70,17 @@ test('google sign-in creates users through the configured user repository', asyn
     'find:maya@example.com',
     'create:maya@example.com:google-1',
   ]);
+  assert.deepEqual(emails, [
+    {
+      to: 'maya@example.com',
+      name: 'Maya',
+    },
+  ]);
 });
 
 test('google sign-in updates existing users through the configured user repository', async () => {
   const calls = [];
+  const emails = [];
   const controller = createAuthController({
     googleClient: {
       async verifyIdToken() {
@@ -111,6 +122,9 @@ test('google sign-in updates existing users through the configured user reposito
       accessToken: 'access',
       refreshToken: 'refresh',
     }),
+    emailService: {
+      sendWelcomeEmail: async payload => emails.push(payload),
+    },
   });
 
   const res = createResponse();
@@ -122,4 +136,5 @@ test('google sign-in updates existing users through the configured user reposito
     'find:maya@example.com',
     'update:user-1:Updated:google-1',
   ]);
+  assert.deepEqual(emails, []);
 });

@@ -28,6 +28,14 @@ function validateScreenshot(file) {
 
 async function notify(mailer, payload) {
   try {
+    if (payload.type === 'Bug Report' && mailer.sendBugReportEmails) {
+      await mailer.sendBugReportEmails(payload);
+      return;
+    }
+    if (payload.type === 'Feature Request' && mailer.sendFeatureRequestEmails) {
+      await mailer.sendFeatureRequestEmails(payload);
+      return;
+    }
     await mailer.sendFeedbackEmail(payload);
   } catch (err) {
     if (process.env.NODE_ENV !== 'test') {
@@ -62,6 +70,7 @@ async function createBugReport(payload, options = {}) {
     type: 'Bug Report',
     userId: report.userId,
     userEmail: report.userEmail,
+    userName: user.name || '',
     whatHappened: report.whatHappened,
     stepsToReproduce: report.stepsToReproduce,
     screenshotUrl: report.screenshotUrl,
@@ -87,6 +96,7 @@ async function createFeatureRequest(payload, options = {}) {
     type: 'Feature Request',
     userId: featureRequest.userId,
     userEmail: featureRequest.userEmail,
+    userName: user.name || '',
     title: featureRequest.title,
     description: featureRequest.description,
   });

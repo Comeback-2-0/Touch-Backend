@@ -1,6 +1,7 @@
 const repository = require('./user.repository');
 const { validateUsername, normalizeUsername, toBoolean } = require('./user.validation');
 const cloudinaryStorage = require('../../storage/cloudinary');
+const defaultEmailService = require('../email/email.service');
 
 function httpError(message, statusCode) {
   return Object.assign(new Error(message), { statusCode });
@@ -62,14 +63,28 @@ function pickProfileFields(input, { requireUsername = false } = {}) {
   return update;
 }
 
-async function completeProfile(userId, input) {
-  await getExistingUser(userId);
+async function completeProfile(userId, input, options = {}) {
+  const currentUser = await getExistingUser(userId);
+  const emailService = options.emailService || defaultEmailService;
   const update = pickProfileFields(input || {}, { requireUsername: true });
   await assertUsernameAvailable(update.username, userId);
 
   update.isProfileComplete = true;
   const user = await repository.updateById(userId, update);
   if (!user) throw httpError('User not found', 404);
+
+  if (!currentUser.isProfileComplete) {
+    try {
+      await emailService.sendProfileCompletedEmail({
+        to: user.email,
+        name: user.name,
+      });
+    } catch (err) {
+      if (process.env.NODE_ENV !== 'test') {
+        console.warn('Profile completed email failed:', err.message);
+      }
+    }
+  }
 
   return publicProfile(user);
 }

@@ -13,6 +13,7 @@ const {
   getRefreshSession,
   deleteRefreshSession,
 } = require('./auth.sessions');
+const defaultEmailService = require('../email/email.service');
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -61,8 +62,22 @@ function createAuthController({
   users = userRepository,
   issueTokenPair: createTokens = issueTokenPair,
   userRepository: injectedUserRepository,
+  emailService = defaultEmailService,
 } = {}) {
   const repository = injectedUserRepository || users;
+
+  async function notifyWelcome(user) {
+    try {
+      await emailService.sendWelcomeEmail({
+        to: user.email,
+        name: user.name,
+      });
+    } catch (err) {
+      if (process.env.NODE_ENV !== 'test') {
+        console.warn('Welcome email failed:', err.message);
+      }
+    }
+  }
 
   const googleSignIn = async (req, res) => {
     const { idToken } = req.body;
@@ -82,8 +97,9 @@ function createAuthController({
       const { name, email, picture, sub } = payload;
 
       let user = await repository.findByEmail(email);
+      const isNewUser = !user;
 
-      if (!user) {
+      if (isNewUser) {
         user = await repository.create({
           name,
           email,
@@ -100,6 +116,10 @@ function createAuthController({
           uid: user.uid || sub,
           lastLoginAt: new Date(),
         });
+      }
+
+      if (isNewUser) {
+        await notifyWelcome(user);
       }
 
       const tokens = await createTokens(user);

@@ -39,6 +39,7 @@ async function createUser(overrides = {}) {
 
 test('completeProfile stores lowercase username and marks profile complete', async () => {
   const user = await createUser();
+  const emails = [];
 
   const result = await userService.completeProfile(user._id.toString(), {
     name: 'Maya Singh',
@@ -47,6 +48,10 @@ test('completeProfile stores lowercase username and marks profile complete', asy
     isPrivate: true,
     profilePicture: 'https://cdn.example.com/pic.jpg',
     profilePicturePublicId: 'touch/profile-pictures/new',
+  }, {
+    emailService: {
+      sendProfileCompletedEmail: async payload => emails.push(payload),
+    },
   });
 
   assert.equal(result.name, 'Maya Singh');
@@ -55,6 +60,27 @@ test('completeProfile stores lowercase username and marks profile complete', asy
   assert.equal(result.isPrivate, true);
   assert.equal(result.profilePicture, 'https://cdn.example.com/pic.jpg');
   assert.equal(result.isProfileComplete, true);
+  assert.deepEqual(emails, [
+    {
+      to: user.email,
+      name: 'Maya Singh',
+    },
+  ]);
+});
+
+test('completeProfile does not resend profile email for already complete users', async () => {
+  const user = await createUser({isProfileComplete: true, username: 'oldname'});
+  const emails = [];
+
+  await userService.completeProfile(user._id.toString(), {
+    username: 'newname',
+  }, {
+    emailService: {
+      sendProfileCompletedEmail: async payload => emails.push(payload),
+    },
+  });
+
+  assert.deepEqual(emails, []);
 });
 
 test('completeProfile rejects invalid usernames', async () => {
