@@ -32,10 +32,18 @@ test.beforeEach(async () => {
   await PublicPost.deleteMany({});
 });
 
-function makeApp(postStorage) {
+function makeApp(options = {}) {
+  const normalizedOptions = options && (options.uploadPostImage || typeof options === 'function')
+    ? {postStorage: options}
+    : options;
+  const engagementRepository = normalizedOptions.engagementRepository || {
+    async likedContentIds() {
+      return [];
+    },
+  };
   const app = express();
   app.use(express.json());
-  app.use('/posts', publicPostRoutes({postStorage}));
+  app.use('/posts', publicPostRoutes({...normalizedOptions, engagementRepository}));
   app.use('/legacy/community-posts', legacyPostRoutes);
   return app;
 }
@@ -318,6 +326,78 @@ test('GET /posts/feed and /posts/user/:userId return active public posts newest 
     assert.equal(authorPosts.status, 200);
     const authorBody = await authorPosts.json();
     assert.deepEqual(authorBody.posts.map(post => post.id), [newer._id.toString(), older._id.toString()]);
+  });
+});
+
+test('POST /posts/:postId/like requires auth and returns liked state from the service', async () => {
+  const user = await createUser();
+  const calls = [];
+  const app = makeApp({
+    postService: {
+      async likePost(postId, options) {
+        calls.push(`like:${postId}:${options.user.id}`);
+        return {liked: true, likesCount: 12};
+      },
+    },
+  });
+
+  await withServer(app, async baseUrl => {
+    const unauthenticated = await fetch(`${baseUrl}/posts/post-1/like`, {method: 'POST'});
+    assert.equal(unauthenticated.status, 401);
+
+    const response = await fetch(`${baseUrl}/posts/post-1/like`, {
+      method: 'POST',
+      headers: authHeader(user),
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {liked: true, likesCount: 12});
+    assert.deepEqual(calls, [`like:post-1:${user._id}`]);
+  });
+});
+
+test('DELETE /posts/:postId/like returns unliked state from the service', async () => {
+  const user = await createUser();
+  const app = makeApp({
+    postService: {
+      async unlikePost(postId, options) {
+        assert.equal(postId, 'post-1');
+        assert.equal(options.user.id, user._id.toString());
+        return {liked: false, likesCount: 11};
+      },
+    },
+  });
+
+  await withServer(app, async baseUrl => {
+    const response = await fetch(`${baseUrl}/posts/post-1/like`, {
+      method: 'DELETE',
+      headers: authHeader(user),
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {liked: false, likesCount: 11});
+  });
+});
+
+test('GET /posts/:postId/engagement-status returns viewer status from the service', async () => {
+  const user = await createUser();
+  const app = makeApp({
+    postService: {
+      async getPostEngagementStatus(postId, options) {
+        assert.equal(postId, 'post-1');
+        assert.equal(options.user.id, user._id.toString());
+        return {liked: true, likesCount: 3};
+      },
+    },
+  });
+
+  await withServer(app, async baseUrl => {
+    const response = await fetch(`${baseUrl}/posts/post-1/engagement-status`, {
+      headers: authHeader(user),
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {liked: true, likesCount: 3});
   });
 });
 

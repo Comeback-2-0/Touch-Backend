@@ -1,5 +1,7 @@
+const mongoose = require('mongoose');
 const PublicPost = require('./public-post.model');
 const defaultUserRepository = require('../users/user.repository');
+const {createEngagementRepository} = require('../graph/engagement.repository');
 const cloudinaryStorage = require('../../storage/cloudinary');
 
 const ALLOWED_POST_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -55,9 +57,17 @@ function entityId(value) {
   return String(value.id || value._id || value);
 }
 
-function toPublicPost(post) {
+function postId(post) {
+  return post._id?.toString ? post._id.toString() : String(post.id || post._id);
+}
+
+function engagementCount(post, key) {
+  return Number(post.engagement?.[key] || 0);
+}
+
+function toPublicPost(post, viewerEngagement = {liked: false}) {
   return {
-    id: post._id.toString(),
+    id: postId(post),
     author: {
       id: String(post.authorId),
       ...post.authorSnapshot,
@@ -68,6 +78,9 @@ function toPublicPost(post) {
     status: post.status,
     engagement: post.engagement,
     moderation: post.moderation,
+    viewerEngagement: {
+      liked: Boolean(viewerEngagement.liked),
+    },
     createdAt: post.createdAt,
     updatedAt: post.updatedAt,
   };
@@ -80,6 +93,63 @@ function createDefaultPostRepository() {
     },
     find(query) {
       return PublicPost.find(query);
+    },
+    async findPage({authorId, limit, cursor}) {
+      const normalizedLimit = parseLimit(limit);
+      const cursorDate = parseCursor(cursor);
+      const query = {
+        status: 'active',
+        visibility: 'public',
+      };
+
+      if (authorId) query.authorId = authorId;
+      if (cursorDate) query.createdAt = {$lt: cursorDate};
+
+      const posts = await PublicPost.find(query)
+        .sort({createdAt: -1, _id: -1})
+        .limit(normalizedLimit + 1);
+
+      const hasMore = posts.length > normalizedLimit;
+      const visiblePosts = hasMore ? posts.slice(0, normalizedLimit) : posts;
+
+      return {
+        posts: visiblePosts,
+        nextCursor: hasMore ? visiblePosts[visiblePosts.length - 1].createdAt.toISOString() : null,
+      };
+    },
+    findActivePublicById(id) {
+      if (!mongoose.isValidObjectId(id)) return null;
+      return PublicPost.findOne({
+        _id: id,
+        status: 'active',
+        visibility: 'public',
+      });
+    },
+    incrementLikesCount(id, by = 1) {
+      return PublicPost.findByIdAndUpdate(
+        id,
+        {$inc: {'engagement.likesCount': by}},
+        {new: true},
+      );
+    },
+    decrementLikesCount(id) {
+      if (!mongoose.isValidObjectId(id)) return null;
+      return PublicPost.findOneAndUpdate(
+        {_id: id},
+        [
+          {
+            $set: {
+              'engagement.likesCount': {
+                $max: [
+                  0,
+                  {$add: [{$ifNull: ['$engagement.likesCount', 0]}, -1]},
+                ],
+              },
+            },
+          },
+        ],
+        {new: true},
+      );
     },
   };
 }
@@ -148,45 +218,122 @@ function parseCursor(cursor) {
   return date;
 }
 
-async function listPosts({authorId, limit, cursor}) {
-  const normalizedLimit = parseLimit(limit);
-  const cursorDate = parseCursor(cursor);
-  const query = {
-    status: 'active',
-    visibility: 'public',
-  };
+function requireAuthenticatedUser(options) {
+  const userId = options.user?.id;
+  if (!userId) {
+    throw httpError('Authentication required', 401);
+  }
+  return String(userId);
+}
 
-  if (authorId) query.authorId = authorId;
-  if (cursorDate) query.createdAt = {$lt: cursorDate};
+async function likedPostIdSet(posts, options) {
+  const userId = options.user?.id;
+  if (!userId || posts.length === 0) return new Set();
 
-  const posts = await PublicPost.find(query)
-    .sort({createdAt: -1, _id: -1})
-    .limit(normalizedLimit + 1);
+  const engagementRepository = options.engagementRepository || createEngagementRepository();
+  const likedIds = await engagementRepository.likedContentIds({
+    userId,
+    contentType: 'post',
+    contentIds: posts.map(postId),
+  });
 
-  const hasMore = posts.length > normalizedLimit;
-  const visiblePosts = hasMore ? posts.slice(0, normalizedLimit) : posts;
+  return new Set(likedIds.map(String));
+}
+
+async function listPosts({authorId, limit, cursor}, options = {}) {
+  const postRepository = options.postRepository || createDefaultPostRepository();
+  const result = await postRepository.findPage({authorId, limit, cursor});
+  const likedIds = await likedPostIdSet(result.posts, options);
 
   return {
-    posts: visiblePosts.map(toPublicPost),
-    nextCursor: hasMore ? visiblePosts[visiblePosts.length - 1].createdAt.toISOString() : null,
+    posts: result.posts.map(post => toPublicPost(post, {liked: likedIds.has(postId(post))})),
+    nextCursor: result.nextCursor,
   };
 }
 
-async function listFeed(query = {}) {
-  return listPosts(query);
+async function listFeed(query = {}, options = {}) {
+  return listPosts(query, options);
 }
 
-async function listUserPosts(userId, query = {}) {
+async function listUserPosts(userId, query = {}, options = {}) {
   if (!userId || typeof userId !== 'string') {
     throw httpError('Invalid user id', 400);
   }
-  return listPosts({...query, authorId: userId});
+  return listPosts({...query, authorId: userId}, options);
+}
+
+async function findActivePublicPost(postIdValue, postRepository) {
+  const post = await postRepository.findActivePublicById(postIdValue);
+  if (!post) {
+    throw httpError('Post not found', 404);
+  }
+  return post;
+}
+
+async function likePost(postIdValue, options = {}) {
+  const userId = requireAuthenticatedUser(options);
+  const postRepository = options.postRepository || createDefaultPostRepository();
+  const engagementRepository = options.engagementRepository || createEngagementRepository();
+  const post = await findActivePublicPost(postIdValue, postRepository);
+  const changed = await engagementRepository.likeContentIfAbsent({
+    userId,
+    contentId: postIdValue,
+    contentType: 'post',
+  });
+  const countSource = changed
+    ? await postRepository.incrementLikesCount(postIdValue, 1)
+    : post;
+
+  return {
+    liked: true,
+    likesCount: engagementCount(countSource || post, 'likesCount'),
+  };
+}
+
+async function unlikePost(postIdValue, options = {}) {
+  const userId = requireAuthenticatedUser(options);
+  const postRepository = options.postRepository || createDefaultPostRepository();
+  const engagementRepository = options.engagementRepository || createEngagementRepository();
+  const post = await findActivePublicPost(postIdValue, postRepository);
+  const changed = await engagementRepository.unlikeContentIfPresent({
+    userId,
+    contentId: postIdValue,
+    contentType: 'post',
+  });
+  const countSource = changed
+    ? await postRepository.decrementLikesCount(postIdValue)
+    : post;
+
+  return {
+    liked: false,
+    likesCount: engagementCount(countSource || post, 'likesCount'),
+  };
+}
+
+async function getPostEngagementStatus(postIdValue, options = {}) {
+  const userId = requireAuthenticatedUser(options);
+  const postRepository = options.postRepository || createDefaultPostRepository();
+  const engagementRepository = options.engagementRepository || createEngagementRepository();
+  const post = await findActivePublicPost(postIdValue, postRepository);
+  const liked = await engagementRepository.hasLiked({
+    userId,
+    contentId: postIdValue,
+    contentType: 'post',
+  });
+
+  return {
+    liked,
+    likesCount: engagementCount(post, 'likesCount'),
+  };
 }
 
 module.exports = {
   createPost,
+  getPostEngagementStatus,
+  likePost,
   listFeed,
   listUserPosts,
+  unlikePost,
   validatePostImages,
   ALLOWED_POST_IMAGE_TYPES,
   MAX_POST_IMAGE_BYTES,

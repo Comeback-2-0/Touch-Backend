@@ -3,7 +3,16 @@ const test = require('node:test');
 
 const { createEngagementRepository } = require('../../../src/modules/graph/engagement.repository');
 
-function createDriver() {
+function createRecord(values) {
+  return {
+    get(key) {
+      if (Object.prototype.hasOwnProperty.call(values, key)) return values[key];
+      return null;
+    },
+  };
+}
+
+function createDriver({writeRecords = [], readRecords} = {}) {
   const runs = [];
   return {
     runs,
@@ -15,7 +24,7 @@ function createDriver() {
             return work({
               async run(cypher, params) {
                 runs.push({ cypher, params });
-                return { records: [] };
+                return { records: writeRecords };
               },
             });
           },
@@ -24,13 +33,7 @@ function createDriver() {
               async run(cypher, params) {
                 runs.push({ cypher, params });
                 return {
-                  records: [{
-                    get(key) {
-                      if (key === 'exists') return true;
-                      if (key === 'count') return 2;
-                      return null;
-                    },
-                  }],
+                  records: readRecords || [createRecord({exists: true, count: 2})],
                 };
               },
             });
@@ -60,6 +63,57 @@ test('likes are stored as Neo4j user-to-content relationships', async () => {
     createdAt: write.params.createdAt,
   });
   assert.deepEqual(runs[0].sessionOptions, { database: 'neo4j' });
+});
+
+test('like mutations report whether Neo4j created a new relationship', async () => {
+  const { driver, runs } = createDriver({writeRecords: [createRecord({created: true})]});
+  const repository = createEngagementRepository({ driver });
+
+  const changed = await repository.likeContentIfAbsent({
+    userId: 'user-1',
+    contentId: 'post-1',
+    contentType: 'post',
+  });
+
+  assert.equal(changed, true);
+  const write = runs.find(entry => entry.cypher);
+  assert.match(write.cypher, /MERGE \(u\)-\[r:LIKED\]->\(c\)/);
+  assert.match(write.cypher, /ON CREATE SET/);
+  assert.match(write.cypher, /RETURN created/);
+});
+
+test('unlike mutations report whether Neo4j deleted an existing relationship', async () => {
+  const { driver, runs } = createDriver({writeRecords: [createRecord({deleted: true})]});
+  const repository = createEngagementRepository({ driver });
+
+  const changed = await repository.unlikeContentIfPresent({
+    userId: 'user-1',
+    contentId: 'post-1',
+    contentType: 'post',
+  });
+
+  assert.equal(changed, true);
+  const write = runs.find(entry => entry.cypher);
+  assert.match(write.cypher, /MATCH \(u:User \{id: \$userId\}\)-\[r:LIKED\]->\(c:Post \{id: \$contentId\}\)/);
+  assert.match(write.cypher, /RETURN size\(rels\) > 0 as deleted/);
+});
+
+test('batch liked content lookup returns only ids liked by the viewer', async () => {
+  const { driver, runs } = createDriver({
+    readRecords: [createRecord({contentId: 'post-2'}), createRecord({contentId: 'post-3'})],
+  });
+  const repository = createEngagementRepository({ driver });
+
+  const likedIds = await repository.likedContentIds({
+    userId: 'user-1',
+    contentType: 'post',
+    contentIds: ['post-1', 'post-2', 'post-3'],
+  });
+
+  assert.deepEqual(likedIds, ['post-2', 'post-3']);
+  const read = runs.find(entry => entry.cypher);
+  assert.match(read.cypher, /WHERE c.id IN \$contentIds/);
+  assert.deepEqual(read.params.contentIds, ['post-1', 'post-2', 'post-3']);
 });
 
 test('saves are stored as Neo4j user-to-content relationships', async () => {

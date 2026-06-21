@@ -22,7 +22,9 @@ function createPublicPostController(postService = defaultPostService) {
 
     getFeed: async (req, res) => {
       try {
-        const result = await postService.listFeed(req.query || {});
+        const result = await postService.listFeed(req.query || {}, {
+          user: req.user,
+        });
         return res.status(200).json(result);
       } catch (err) {
         return sendError(res, err);
@@ -31,7 +33,9 @@ function createPublicPostController(postService = defaultPostService) {
 
     getMyPosts: async (req, res) => {
       try {
-        const result = await postService.listUserPosts(req.user.id, req.query || {});
+        const result = await postService.listUserPosts(req.user.id, req.query || {}, {
+          user: req.user,
+        });
         return res.status(200).json(result);
       } catch (err) {
         return sendError(res, err);
@@ -40,7 +44,42 @@ function createPublicPostController(postService = defaultPostService) {
 
     getUserPosts: async (req, res) => {
       try {
-        const result = await postService.listUserPosts(req.params.userId, req.query || {});
+        const result = await postService.listUserPosts(req.params.userId, req.query || {}, {
+          user: req.user,
+        });
+        return res.status(200).json(result);
+      } catch (err) {
+        return sendError(res, err);
+      }
+    },
+
+    likePost: async (req, res) => {
+      try {
+        const result = await postService.likePost(req.params.postId, {
+          user: req.user,
+        });
+        return res.status(200).json(result);
+      } catch (err) {
+        return sendError(res, err);
+      }
+    },
+
+    unlikePost: async (req, res) => {
+      try {
+        const result = await postService.unlikePost(req.params.postId, {
+          user: req.user,
+        });
+        return res.status(200).json(result);
+      } catch (err) {
+        return sendError(res, err);
+      }
+    },
+
+    getEngagementStatus: async (req, res) => {
+      try {
+        const result = await postService.getPostEngagementStatus(req.params.postId, {
+          user: req.user,
+        });
         return res.status(200).json(result);
       } catch (err) {
         return sendError(res, err);

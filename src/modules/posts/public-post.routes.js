@@ -16,19 +16,36 @@ function fileFilter(req, file, cb) {
   cb(null, true);
 }
 
-function createPublicPostRoutes({postService, postStorage} = {}) {
+function createPublicPostRoutes({postService, postStorage, engagementRepository} = {}) {
   const router = express.Router();
-  const service = postService || (
-    postStorage
-      ? {
-          ...require('./public-post.service'),
-          createPost: (payload, options) => require('./public-post.service').createPost(payload, {
-            ...options,
-            storage: postStorage,
-          }),
-        }
-      : undefined
-  );
+  const defaultService = require('./public-post.service');
+  const baseService = postService || defaultService;
+  const injectOptions = options => ({
+    ...options,
+    ...(postStorage ? {storage: postStorage} : {}),
+    ...(engagementRepository ? {engagementRepository} : {}),
+  });
+  const service = {
+    ...baseService,
+    createPost: baseService.createPost
+      ? (payload, options) => baseService.createPost(payload, injectOptions(options))
+      : undefined,
+    listFeed: baseService.listFeed
+      ? (query, options) => baseService.listFeed(query, injectOptions(options))
+      : undefined,
+    listUserPosts: baseService.listUserPosts
+      ? (userId, query, options) => baseService.listUserPosts(userId, query, injectOptions(options))
+      : undefined,
+    likePost: baseService.likePost
+      ? (postId, options) => baseService.likePost(postId, injectOptions(options))
+      : undefined,
+    unlikePost: baseService.unlikePost
+      ? (postId, options) => baseService.unlikePost(postId, injectOptions(options))
+      : undefined,
+    getPostEngagementStatus: baseService.getPostEngagementStatus
+      ? (postId, options) => baseService.getPostEngagementStatus(postId, injectOptions(options))
+      : undefined,
+  };
   const controller = createPublicPostController(service);
   const upload = multer({
     storage: multer.memoryStorage(),
@@ -57,6 +74,9 @@ function createPublicPostRoutes({postService, postStorage} = {}) {
   router.get('/feed', auth, controller.getFeed);
   router.get('/me', auth, controller.getMyPosts);
   router.get('/user/:userId', auth, controller.getUserPosts);
+  router.post('/:postId/like', auth, controller.likePost);
+  router.delete('/:postId/like', auth, controller.unlikePost);
+  router.get('/:postId/engagement-status', auth, controller.getEngagementStatus);
 
   return router;
 }
