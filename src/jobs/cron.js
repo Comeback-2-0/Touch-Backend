@@ -1,5 +1,10 @@
 const cron = require('node-cron');
 const Post = require('../modules/posts/post.model');
+const {runCommunityPublication} = require('./community-publication');
+
+cron.schedule('* * * * *', async () => {
+  try { await runCommunityPublication(); } catch (error) { console.error('[CRON] Community publication failed', error); }
+});
 
 cron.schedule('0 0 * * *', async () => {
   console.log('[CRON] Running post promotion task');

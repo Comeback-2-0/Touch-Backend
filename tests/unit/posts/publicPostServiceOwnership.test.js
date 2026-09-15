@@ -6,7 +6,11 @@ const {
   getPostEngagementStatus,
   likePost,
   listFeed,
+  markPostNotInterested,
+  reportPost,
   unlikePost,
+  undoPostNotInterested,
+  withdrawPostReport,
 } = require('../../../src/modules/posts/public-post.service');
 
 function makePost(overrides = {}) {
@@ -246,4 +250,174 @@ test('likePost returns 404 for missing, deleted, or non-public posts', async () 
     }),
     error => error.statusCode === 404 && /post not found/i.test(error.message),
   );
+});
+
+test('reportPost creates an active PostgreSQL report and recalculates Mongo moderation cache', async () => {
+  const calls = [];
+  const post = makePost({engagement: {reportsCount: 0}});
+  post.authorId = 'author-1';
+  const postRepository = {
+    async findActivePublicById(postId) {
+      calls.push(`find:${postId}`);
+      return post;
+    },
+    async updateReportModeration(postId, reportsCount) {
+      calls.push(`moderation:${postId}:${reportsCount}`);
+      post.engagement.reportsCount = reportsCount;
+      post.moderation = {
+        isFlagged: reportsCount > 0,
+        reviewStatus: reportsCount > 0 ? 'pending' : 'none',
+      };
+      return post;
+    },
+  };
+  const reportRepository = {
+    async createActiveReport(input) {
+      calls.push(`report:${input.reporterId}:${input.targetId}:${input.reason}:${input.metadata.details}:${input.metadata.targetOwnerId}`);
+      return {created: true, report: {status: 'open'}};
+    },
+    async countOpenReports(input) {
+      calls.push(`count:${input.targetType}:${input.targetId}`);
+      return 1;
+    },
+  };
+
+  const result = await reportPost('post-1', {reason: 'spam', details: ' Bad post '}, {
+    user: {id: 'user-1'},
+    postRepository,
+    reportRepository,
+  });
+
+  assert.deepEqual(result, {
+    reported: true,
+    status: 'open',
+    reportsCount: 1,
+    moderation: {isFlagged: true, reviewStatus: 'pending'},
+  });
+  assert.deepEqual(calls, [
+    'find:post-1',
+    'report:user-1:post-1:spam:Bad post:author-1',
+    'count:post:post-1',
+    'moderation:post-1:1',
+  ]);
+});
+
+test('reportPost rejects invalid reasons and details over 500 chars', async () => {
+  await assert.rejects(
+    () => reportPost('post-1', {reason: 'annoying'}, {user: {id: 'user-1'}}),
+    error => error.statusCode === 400 && /reason/i.test(error.message),
+  );
+
+  await assert.rejects(
+    () => reportPost('post-1', {reason: 'spam', details: 'x'.repeat(501)}, {user: {id: 'user-1'}}),
+    error => error.statusCode === 400 && /details/i.test(error.message),
+  );
+});
+
+test('duplicate reports are idempotent and use recalculated active report count', async () => {
+  const post = makePost({engagement: {reportsCount: 1}});
+  const postRepository = {
+    async findActivePublicById() {
+      return post;
+    },
+    async updateReportModeration(postId, reportsCount) {
+      post.engagement.reportsCount = reportsCount;
+      post.moderation = {isFlagged: true, reviewStatus: 'pending'};
+      return post;
+    },
+  };
+  const reportRepository = {
+    async createActiveReport() {
+      return {created: false, report: {status: 'open'}};
+    },
+    async countOpenReports() {
+      return 1;
+    },
+  };
+
+  const result = await reportPost('post-1', {reason: 'spam'}, {
+    user: {id: 'user-1'},
+    postRepository,
+    reportRepository,
+  });
+
+  assert.equal(result.reported, true);
+  assert.equal(result.reportsCount, 1);
+});
+
+test('withdrawPostReport marks the report withdrawn and clears moderation when no active reports remain', async () => {
+  const post = makePost({engagement: {reportsCount: 1}});
+  const postRepository = {
+    async findActivePublicById() {
+      return post;
+    },
+    async updateReportModeration(postId, reportsCount) {
+      post.engagement.reportsCount = reportsCount;
+      post.moderation = {
+        isFlagged: reportsCount > 0,
+        reviewStatus: reportsCount > 0 ? 'pending' : 'none',
+      };
+      return post;
+    },
+  };
+  const reportRepository = {
+    async withdrawActiveReport(input) {
+      assert.deepEqual(input, {reporterId: 'user-1', targetType: 'post', targetId: 'post-1'});
+      return {withdrawn: true, report: {status: 'withdrawn'}};
+    },
+    async countOpenReports() {
+      return 0;
+    },
+  };
+
+  const result = await withdrawPostReport('post-1', {
+    user: {id: 'user-1'},
+    postRepository,
+    reportRepository,
+  });
+
+  assert.deepEqual(result, {
+    reported: false,
+    status: 'withdrawn',
+    reportsCount: 0,
+    moderation: {isFlagged: false, reviewStatus: 'none'},
+  });
+});
+
+test('not interested actions write Astra preference state and are idempotent at the service boundary', async () => {
+  const calls = [];
+  const postRepository = {
+    async findActivePublicById(postId) {
+      calls.push(`find:${postId}`);
+      return makePost();
+    },
+  };
+  const feedPreferenceRepository = {
+    async markPostNotInterested(input) {
+      calls.push(`hide:${input.userId}:${input.postId}`);
+      return {hidden: true};
+    },
+    async undoPostNotInterested(input) {
+      calls.push(`undo:${input.userId}:${input.postId}`);
+      return {hidden: false};
+    },
+  };
+
+  assert.deepEqual(
+    await markPostNotInterested('post-1', {
+      user: {id: 'user-1'},
+      postRepository,
+      feedPreferenceRepository,
+    }),
+    {hidden: true},
+  );
+  assert.deepEqual(
+    await undoPostNotInterested('post-1', {
+      user: {id: 'user-1'},
+      postRepository,
+      feedPreferenceRepository,
+    }),
+    {hidden: false},
+  );
+  assert.deepEqual(calls, ['find:post-1', 'hide:user-1:post-1', 'find:post-1', 'undo:user-1:post-1']);
 });

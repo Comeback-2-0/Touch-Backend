@@ -26,6 +26,26 @@ function uploadBuffer(file, folder) {
   });
 }
 
+function uploadCommunityBuffer(file, folder) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {folder, resource_type: file.mimetype.startsWith('video/') ? 'video' : 'image'},
+      (error, result) => error ? reject(error) : resolve(result),
+    );
+    stream.end(file.buffer);
+  });
+}
+
+async function uploadCommunityMedia(file) {
+  const result = await uploadCommunityBuffer(file, process.env.CLOUDINARY_COMMUNITY_FOLDER || 'touch/community');
+  return {url: result.secure_url, publicId: result.public_id, duration: Number(result.duration || 0)};
+}
+
+async function deleteCommunityMedia(publicId, isVideo = false) {
+  if (!publicId) return null;
+  return cloudinary.uploader.destroy(publicId, {resource_type: isVideo ? 'video' : 'image'});
+}
+
 async function uploadProfileImage(file) {
   const result = await uploadBuffer(file, process.env.CLOUDINARY_PROFILE_FOLDER || 'touch/profile-pictures');
   return {
@@ -62,5 +82,7 @@ module.exports = {
   uploadProfileImage,
   uploadFeedbackImage,
   uploadPostImage,
+  uploadCommunityMedia,
+  deleteCommunityMedia,
   deleteProfileImage,
 };

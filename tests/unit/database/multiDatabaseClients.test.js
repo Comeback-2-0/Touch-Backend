@@ -10,7 +10,10 @@ const {
   verifyNeo4jConnectivity,
   ensureNeo4jSchema,
 } = require('../../../src/database/neo4jClient');
-const { createAstraClient } = require('../../../src/database/astraClient');
+const {
+  createCassandraClient,
+  ensureCassandraSchema,
+} = require('../../../src/database/cassandraClient');
 
 test('postgres client requires DATABASE_URL', () => {
   assert.throws(() => createPostgresClient({ url: '' }), /DATABASE_URL/);
@@ -89,32 +92,47 @@ test('neo4j schema bootstrap creates unique id constraints for graph nodes', asy
   assert.deepEqual(queries[0].sessionOptions, { database: 'neo4j' });
 });
 
-test('astra client writes Data API commands with token and keyspace', async () => {
-  const requests = [];
-  const client = createAstraClient({
-    apiEndpoint: 'https://astra.example.com',
+test('cassandra client uses Astra secure bundle and application token credentials', () => {
+  const created = {};
+  const client = createCassandraClient({
+    secureConnectBundle: 'C:/secure-connect-touch.zip',
     applicationToken: 'AstraCS:token',
     keyspace: 'touch',
-    fetchImpl: async (url, options) => {
-      requests.push({ url, options });
-      return {
-        ok: true,
-        async json() {
-          return { status: { insertedIds: ['event-1'] } };
-        },
-      };
+    cassandra: {
+      Client: class Client {
+        constructor(options) {
+          created.options = options;
+        }
+      },
     },
   });
 
-  const result = await client.insertOne('post_view_events', { eventId: 'event-1' });
-
-  assert.deepEqual(result, { status: { insertedIds: ['event-1'] } });
-  assert.equal(
-    requests[0].url,
-    'https://astra.example.com/api/json/v1/touch/post_view_events',
-  );
-  assert.equal(requests[0].options.headers.Token, 'AstraCS:token');
-  assert.deepEqual(JSON.parse(requests[0].options.body), {
-    insertOne: { document: { eventId: 'event-1' } },
+  assert.ok(client);
+  assert.deepEqual(created.options.cloud, { secureConnectBundle: 'C:/secure-connect-touch.zip' });
+  assert.deepEqual(created.options.credentials, {
+    username: 'token',
+    password: 'AstraCS:token',
   });
+  assert.equal(created.options.keyspace, 'touch');
+});
+
+test('cassandra schema bootstrap creates feed and event tables', async () => {
+  const queries = [];
+  const client = {
+    async execute(query) {
+      queries.push(query);
+    },
+  };
+
+  await ensureCassandraSchema(client);
+
+  const schema = queries.join('\n');
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS post_view_events/i);
+  assert.match(schema, /PRIMARY KEY \(\(post_id, bucket\), viewed_at, event_id\)/i);
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS feed_preference_events/i);
+  assert.match(schema, /PRIMARY KEY \(\(user_id, bucket\), created_at, event_id\)/i);
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS user_hidden_posts/i);
+  assert.match(schema, /PRIMARY KEY \(\(user_id\), content_type, content_id\)/i);
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS user_feeds/i);
+  assert.match(schema, /PRIMARY KEY \(\(user_id, bucket\), rank, content_id\)/i);
 });

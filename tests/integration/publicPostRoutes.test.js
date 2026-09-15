@@ -401,6 +401,104 @@ test('GET /posts/:postId/engagement-status returns viewer status from the servic
   });
 });
 
+test('POST and DELETE /posts/:postId/report require auth and return report state from the service', async () => {
+  const user = await createUser();
+  const calls = [];
+  const app = makeApp({
+    postService: {
+      async reportPost(postId, payload, options) {
+        calls.push(`report:${postId}:${payload.reason}:${payload.details}:${options.user.id}`);
+        return {
+          reported: true,
+          status: 'open',
+          reportsCount: 1,
+          moderation: {isFlagged: true, reviewStatus: 'pending'},
+        };
+      },
+      async withdrawPostReport(postId, options) {
+        calls.push(`withdraw:${postId}:${options.user.id}`);
+        return {
+          reported: false,
+          status: 'withdrawn',
+          reportsCount: 0,
+          moderation: {isFlagged: false, reviewStatus: 'none'},
+        };
+      },
+    },
+  });
+
+  await withServer(app, async baseUrl => {
+    const unauthenticated = await fetch(`${baseUrl}/posts/post-1/report`, {method: 'POST'});
+    assert.equal(unauthenticated.status, 401);
+
+    const report = await fetch(`${baseUrl}/posts/post-1/report`, {
+      method: 'POST',
+      headers: {...authHeader(user), 'content-type': 'application/json'},
+      body: JSON.stringify({reason: 'spam', details: 'Bad post'}),
+    });
+    assert.equal(report.status, 200);
+    assert.deepEqual(await report.json(), {
+      reported: true,
+      status: 'open',
+      reportsCount: 1,
+      moderation: {isFlagged: true, reviewStatus: 'pending'},
+    });
+
+    const withdraw = await fetch(`${baseUrl}/posts/post-1/report`, {
+      method: 'DELETE',
+      headers: authHeader(user),
+    });
+    assert.equal(withdraw.status, 200);
+    assert.deepEqual(await withdraw.json(), {
+      reported: false,
+      status: 'withdrawn',
+      reportsCount: 0,
+      moderation: {isFlagged: false, reviewStatus: 'none'},
+    });
+    assert.deepEqual(calls, [
+      `report:post-1:spam:Bad post:${user._id}`,
+      `withdraw:post-1:${user._id}`,
+    ]);
+  });
+});
+
+test('POST and DELETE /posts/:postId/not-interested return hidden state from the service', async () => {
+  const user = await createUser();
+  const calls = [];
+  const app = makeApp({
+    postService: {
+      async markPostNotInterested(postId, options) {
+        calls.push(`hide:${postId}:${options.user.id}`);
+        return {hidden: true};
+      },
+      async undoPostNotInterested(postId, options) {
+        calls.push(`undo:${postId}:${options.user.id}`);
+        return {hidden: false};
+      },
+    },
+  });
+
+  await withServer(app, async baseUrl => {
+    const hide = await fetch(`${baseUrl}/posts/post-1/not-interested`, {
+      method: 'POST',
+      headers: authHeader(user),
+    });
+    assert.equal(hide.status, 200);
+    assert.deepEqual(await hide.json(), {hidden: true});
+
+    const undo = await fetch(`${baseUrl}/posts/post-1/not-interested`, {
+      method: 'DELETE',
+      headers: authHeader(user),
+    });
+    assert.equal(undo.status, 200);
+    assert.deepEqual(await undo.json(), {hidden: false});
+    assert.deepEqual(calls, [
+      `hide:post-1:${user._id}`,
+      `undo:post-1:${user._id}`,
+    ]);
+  });
+});
+
 test('legacy group post routes remain reachable under /legacy/community-posts', async () => {
   const app = makeApp();
   const groupId = new mongoose.Types.ObjectId().toString();

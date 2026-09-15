@@ -2,6 +2,8 @@ const mongoose = require('mongoose');
 const PublicPost = require('./public-post.model');
 const defaultUserRepository = require('../users/user.repository');
 const {createEngagementRepository} = require('../graph/engagement.repository');
+const {createPostgresReportRepository} = require('../reports/postgres-report.repository');
+const {createAstraEventRepository} = require('../feed/astra-event.repository');
 const cloudinaryStorage = require('../../storage/cloudinary');
 
 const ALLOWED_POST_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -10,6 +12,17 @@ const MAX_POST_IMAGES = 10;
 const MAX_POST_TEXT_LENGTH = 2000;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
+const MAX_REPORT_DETAILS_LENGTH = 500;
+const REPORT_REASONS = new Set([
+  'spam',
+  'harassment',
+  'hate',
+  'sexual_content',
+  'violence',
+  'scam',
+  'misleading',
+  'other',
+]);
 
 function httpError(message, statusCode) {
   return Object.assign(new Error(message), {statusCode});
@@ -148,6 +161,21 @@ function createDefaultPostRepository() {
             },
           },
         ],
+        {new: true},
+      );
+    },
+    updateReportModeration(id, reportsCount) {
+      if (!mongoose.isValidObjectId(id)) return null;
+      const normalizedCount = Math.max(0, Number(reportsCount || 0));
+      return PublicPost.findByIdAndUpdate(
+        id,
+        {
+          $set: {
+            'engagement.reportsCount': normalizedCount,
+            'moderation.isFlagged': normalizedCount > 0,
+            'moderation.reviewStatus': normalizedCount > 0 ? 'pending' : 'none',
+          },
+        },
         {new: true},
       );
     },
@@ -327,16 +355,147 @@ async function getPostEngagementStatus(postIdValue, options = {}) {
   };
 }
 
+function normalizeReportReason(reason) {
+  return typeof reason === 'string' ? reason.trim().toLowerCase() : '';
+}
+
+function validateReportPayload(payload = {}) {
+  const reason = normalizeReportReason(payload.reason);
+  const details = normalizeText(payload.details);
+
+  if (!REPORT_REASONS.has(reason)) {
+    throw httpError('Invalid report reason', 400);
+  }
+
+  if (details.length > MAX_REPORT_DETAILS_LENGTH) {
+    throw httpError(`Report details must be ${MAX_REPORT_DETAILS_LENGTH} characters or fewer`, 400);
+  }
+
+  return {reason, details};
+}
+
+function moderationState(post) {
+  return {
+    isFlagged: Boolean(post.moderation?.isFlagged),
+    reviewStatus: post.moderation?.reviewStatus || 'none',
+  };
+}
+
+async function recalculateReportModeration(postIdValue, postRepository, reportRepository) {
+  const reportsCount = await reportRepository.countOpenReports({
+    targetType: 'post',
+    targetId: postIdValue,
+  });
+  const updatedPost = await postRepository.updateReportModeration(postIdValue, reportsCount);
+
+  return {
+    reportsCount,
+    moderation: moderationState(updatedPost || {
+      moderation: {
+        isFlagged: reportsCount > 0,
+        reviewStatus: reportsCount > 0 ? 'pending' : 'none',
+      },
+    }),
+  };
+}
+
+async function reportPost(postIdValue, payload = {}, options = {}) {
+  const userId = requireAuthenticatedUser(options);
+  const {reason, details} = validateReportPayload(payload);
+  const postRepository = options.postRepository || createDefaultPostRepository();
+  const reportRepository = options.reportRepository || createPostgresReportRepository();
+  const post = await findActivePublicPost(postIdValue, postRepository);
+
+  const result = await reportRepository.createActiveReport({
+    reporterId: userId,
+    targetType: 'post',
+    targetId: postIdValue,
+    reason,
+    metadata: {
+      details,
+      targetOwnerId: String(post.authorId || ''),
+    },
+  });
+  const recalculated = await recalculateReportModeration(
+    postIdValue,
+    postRepository,
+    reportRepository,
+  );
+
+  return {
+    reported: true,
+    status: result.report?.status || 'open',
+    ...recalculated,
+  };
+}
+
+async function withdrawPostReport(postIdValue, options = {}) {
+  const userId = requireAuthenticatedUser(options);
+  const postRepository = options.postRepository || createDefaultPostRepository();
+  const reportRepository = options.reportRepository || createPostgresReportRepository();
+  await findActivePublicPost(postIdValue, postRepository);
+  await reportRepository.withdrawActiveReport({
+    reporterId: userId,
+    targetType: 'post',
+    targetId: postIdValue,
+  });
+  const recalculated = await recalculateReportModeration(
+    postIdValue,
+    postRepository,
+    reportRepository,
+  );
+
+  return {
+    reported: false,
+    status: 'withdrawn',
+    ...recalculated,
+  };
+}
+
+async function markPostNotInterested(postIdValue, options = {}) {
+  const userId = requireAuthenticatedUser(options);
+  const postRepository = options.postRepository || createDefaultPostRepository();
+  const feedPreferenceRepository = options.feedPreferenceRepository || createAstraEventRepository();
+  await findActivePublicPost(postIdValue, postRepository);
+  const result = await feedPreferenceRepository.markPostNotInterested({
+    userId,
+    postId: postIdValue,
+    source: 'post_menu',
+  });
+
+  return {hidden: Boolean(result.hidden)};
+}
+
+async function undoPostNotInterested(postIdValue, options = {}) {
+  const userId = requireAuthenticatedUser(options);
+  const postRepository = options.postRepository || createDefaultPostRepository();
+  const feedPreferenceRepository = options.feedPreferenceRepository || createAstraEventRepository();
+  await findActivePublicPost(postIdValue, postRepository);
+  const result = await feedPreferenceRepository.undoPostNotInterested({
+    userId,
+    postId: postIdValue,
+    source: 'post_placeholder',
+  });
+
+  return {hidden: Boolean(result.hidden)};
+}
+
 module.exports = {
   createPost,
   getPostEngagementStatus,
   likePost,
   listFeed,
   listUserPosts,
+  markPostNotInterested,
+  reportPost,
   unlikePost,
+  undoPostNotInterested,
+  withdrawPostReport,
   validatePostImages,
   ALLOWED_POST_IMAGE_TYPES,
   MAX_POST_IMAGE_BYTES,
   MAX_POST_IMAGES,
   MAX_POST_TEXT_LENGTH,
+  MAX_REPORT_DETAILS_LENGTH,
+  REPORT_REASONS,
 };

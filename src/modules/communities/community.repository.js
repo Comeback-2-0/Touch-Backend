@@ -45,8 +45,23 @@ function createCommunityRepository({
     findById(communityId) {
       return activeRepository().findById(communityId);
     },
+    create(input) {
+      return activeRepository().create(input);
+    },
+    update(communityId, input) {
+      return activeRepository().update(communityId, input);
+    },
     listTrending(limit) {
       return activeRepository().listTrending(limit);
+    },
+    listScheduled() {
+      return activeRepository().listScheduled();
+    },
+    markQueuePublished(communityId, at) {
+      return activeRepository().markQueuePublished(communityId, at);
+    },
+    setSuspension(communityId, suspended) {
+      return activeRepository().setSuspension(communityId, suspended);
     },
     search(query) {
       return activeRepository().search(query);
@@ -54,8 +69,59 @@ function createCommunityRepository({
     listJoined(userId) {
       return activeRepository().listJoined(userId);
     },
+    getMembership(userId, communityId) {
+      return activeRepository().getMembership(userId, communityId);
+    },
     joinCommunity(input) {
       return activeRepository().joinCommunity(input);
+    },
+    requestJoin(input) {
+      return activeRepository().requestJoin(input);
+    },
+    getJoinRequest(input) {
+      return activeRepository().getJoinRequest(input);
+    },
+    cancelJoinRequest(input) {
+      return activeRepository().cancelJoinRequest(input);
+    },
+    countPendingJoinRequests(communityId) {
+      return activeRepository().countPendingJoinRequests(communityId);
+    },
+    listJoinRequests(communityId) {
+      return activeRepository().listJoinRequests(communityId);
+    },
+    reviewJoinRequest(input) {
+      return activeRepository().reviewJoinRequest(input);
+    },
+    createInvite(input) {
+      return activeRepository().createInvite(input);
+    },
+    acceptInvite(input) {
+      return activeRepository().acceptInvite(input);
+    },
+    revokeInvite(input) {
+      return activeRepository().revokeInvite(input);
+    },
+    leaveCommunity(input) {
+      return activeRepository().leaveCommunity(input);
+    },
+    setCommunityNotificationMute(input) {
+      return activeRepository().setCommunityNotificationMute(input);
+    },
+    updateMembershipRole(input) {
+      return activeRepository().updateMembershipRole(input);
+    },
+    audit(input) {
+      return activeRepository().audit(input);
+    },
+    listAudit(communityId) {
+      return activeRepository().listAudit(communityId);
+    },
+    requestOwnershipTransfer(input) {
+      return activeRepository().requestOwnershipTransfer(input);
+    },
+    acceptOwnershipTransfer(input) {
+      return activeRepository().acceptOwnershipTransfer(input);
     },
   };
 }

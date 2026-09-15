@@ -85,6 +85,50 @@ function createPublicPostController(postService = defaultPostService) {
         return sendError(res, err);
       }
     },
+
+    reportPost: async (req, res) => {
+      try {
+        const result = await postService.reportPost(req.params.postId, req.body || {}, {
+          user: req.user,
+        });
+        return res.status(200).json(result);
+      } catch (err) {
+        return sendError(res, err);
+      }
+    },
+
+    withdrawPostReport: async (req, res) => {
+      try {
+        const result = await postService.withdrawPostReport(req.params.postId, {
+          user: req.user,
+        });
+        return res.status(200).json(result);
+      } catch (err) {
+        return sendError(res, err);
+      }
+    },
+
+    markPostNotInterested: async (req, res) => {
+      try {
+        const result = await postService.markPostNotInterested(req.params.postId, {
+          user: req.user,
+        });
+        return res.status(200).json(result);
+      } catch (err) {
+        return sendError(res, err);
+      }
+    },
+
+    undoPostNotInterested: async (req, res) => {
+      try {
+        const result = await postService.undoPostNotInterested(req.params.postId, {
+          user: req.user,
+        });
+        return res.status(200).json(result);
+      } catch (err) {
+        return sendError(res, err);
+      }
+    },
   };
 }
 

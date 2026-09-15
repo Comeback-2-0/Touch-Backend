@@ -16,7 +16,13 @@ function fileFilter(req, file, cb) {
   cb(null, true);
 }
 
-function createPublicPostRoutes({postService, postStorage, engagementRepository} = {}) {
+function createPublicPostRoutes({
+  postService,
+  postStorage,
+  engagementRepository,
+  reportRepository,
+  feedPreferenceRepository,
+} = {}) {
   const router = express.Router();
   const defaultService = require('./public-post.service');
   const baseService = postService || defaultService;
@@ -24,6 +30,8 @@ function createPublicPostRoutes({postService, postStorage, engagementRepository}
     ...options,
     ...(postStorage ? {storage: postStorage} : {}),
     ...(engagementRepository ? {engagementRepository} : {}),
+    ...(reportRepository ? {reportRepository} : {}),
+    ...(feedPreferenceRepository ? {feedPreferenceRepository} : {}),
   });
   const service = {
     ...baseService,
@@ -44,6 +52,18 @@ function createPublicPostRoutes({postService, postStorage, engagementRepository}
       : undefined,
     getPostEngagementStatus: baseService.getPostEngagementStatus
       ? (postId, options) => baseService.getPostEngagementStatus(postId, injectOptions(options))
+      : undefined,
+    reportPost: baseService.reportPost
+      ? (postId, payload, options) => baseService.reportPost(postId, payload, injectOptions(options))
+      : undefined,
+    withdrawPostReport: baseService.withdrawPostReport
+      ? (postId, options) => baseService.withdrawPostReport(postId, injectOptions(options))
+      : undefined,
+    markPostNotInterested: baseService.markPostNotInterested
+      ? (postId, options) => baseService.markPostNotInterested(postId, injectOptions(options))
+      : undefined,
+    undoPostNotInterested: baseService.undoPostNotInterested
+      ? (postId, options) => baseService.undoPostNotInterested(postId, injectOptions(options))
       : undefined,
   };
   const controller = createPublicPostController(service);
@@ -77,6 +97,10 @@ function createPublicPostRoutes({postService, postStorage, engagementRepository}
   router.post('/:postId/like', auth, controller.likePost);
   router.delete('/:postId/like', auth, controller.unlikePost);
   router.get('/:postId/engagement-status', auth, controller.getEngagementStatus);
+  router.post('/:postId/report', auth, controller.reportPost);
+  router.delete('/:postId/report', auth, controller.withdrawPostReport);
+  router.post('/:postId/not-interested', auth, controller.markPostNotInterested);
+  router.delete('/:postId/not-interested', auth, controller.undoPostNotInterested);
 
   return router;
 }

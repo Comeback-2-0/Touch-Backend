@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const { getPostgresClient, pingPostgres } = require('../../database/postgresClient');
 const { connectRedis } = require('../../database/redisClient');
 const { getNeo4jDriver, verifyNeo4jConnectivity } = require('../../database/neo4jClient');
-const { createAstraClient } = require('../../database/astraClient');
+const { getCassandraClient, pingCassandra } = require('../../database/cassandraClient');
 
 async function pingMongo(connection = mongoose.connection) {
   if (!connection || connection.readyState !== 1 || !connection.db) {
@@ -19,8 +19,8 @@ async function pingRedis() {
   return true;
 }
 
-function checkAstraConfigured() {
-  createAstraClient();
+async function checkAstraConfigured() {
+  await pingCassandra(getCassandraClient());
   return true;
 }
 

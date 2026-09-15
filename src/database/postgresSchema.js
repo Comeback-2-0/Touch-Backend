@@ -62,6 +62,83 @@ async function ensurePostgresSchema(sql = getPostgresClient()) {
     )
   `;
 
+  await sql`alter table communities add column if not exists rules text not null default ''`;
+  await sql`alter table communities add column if not exists content_visibility text not null default 'public'`;
+  await sql`alter table communities add column if not exists join_mode text not null default 'open'`;
+  await sql`alter table communities add column if not exists show_leadership boolean not null default false`;
+  await sql`alter table communities add column if not exists queue_mode text not null default 'manual'`;
+  await sql`alter table communities add column if not exists queue_schedule_minutes integer`;
+  await sql`alter table communities add column if not exists queue_schedule jsonb`;
+  await sql`alter table communities add column if not exists last_queue_published_at timestamptz`;
+  await sql`alter table communities add column if not exists suspended_at timestamptz`;
+
+  await sql`
+    create table if not exists community_join_requests (
+      id text primary key,
+      community_id text not null references communities(id) on delete cascade,
+      user_id text not null references users(id) on delete cascade,
+      alias text not null,
+      note text not null default '',
+      status text not null default 'pending',
+      reviewed_by text references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      unique (community_id, user_id)
+    )
+  `;
+  await sql`alter table community_join_requests add column if not exists reveal_username boolean not null default false`;
+  await sql`alter table community_join_requests add column if not exists revealed_username text not null default ''`;
+
+  await sql`
+    create table if not exists community_notification_preferences (
+      user_id text not null references users(id) on delete cascade,
+      community_id text not null references communities(id) on delete cascade,
+      muted boolean not null default false,
+      updated_at timestamptz not null default now(),
+      primary key (user_id, community_id)
+    )
+  `;
+
+  await sql`
+    create table if not exists community_invite_links (
+      id text primary key,
+      community_id text not null references communities(id) on delete cascade,
+      token_hash text not null unique,
+      created_by text references users(id) on delete set null,
+      expires_at timestamptz,
+      max_uses integer,
+      uses_count integer not null default 0,
+      revoked_at timestamptz,
+      created_at timestamptz not null default now()
+    )
+  `;
+
+  await sql`
+    create table if not exists community_audit_events (
+      id text primary key,
+      community_id text not null references communities(id) on delete cascade,
+      actor_id text references users(id) on delete set null,
+      action text not null,
+      target_type text not null default '',
+      target_id text not null default '',
+      metadata jsonb not null default '{}'::jsonb,
+      created_at timestamptz not null default now()
+    )
+  `;
+
+  await sql`
+    create table if not exists community_ownership_transfers (
+      id text primary key,
+      community_id text not null references communities(id) on delete cascade,
+      from_user_id text not null references users(id) on delete cascade,
+      to_user_id text not null references users(id) on delete cascade,
+      status text not null default 'pending',
+      created_at timestamptz not null default now(),
+      accepted_at timestamptz
+    )
+  `;
+  await sql`create unique index if not exists idx_community_ownership_transfer_pending on community_ownership_transfers(community_id) where status = 'pending'`;
+
   await sql`
     create table if not exists notification_preferences (
       user_id text primary key references users(id) on delete cascade,
@@ -125,6 +202,11 @@ async function ensurePostgresSchema(sql = getPostgresClient()) {
   await sql`create index if not exists idx_community_memberships_user_id on community_memberships(user_id)`;
   await sql`create index if not exists idx_community_memberships_community_id on community_memberships(community_id)`;
   await sql`create index if not exists idx_reports_target on reports(target_type, target_id)`;
+  await sql`
+    create unique index if not exists idx_reports_active_unique
+    on reports(reporter_id, target_type, target_id)
+    where status = 'open'
+  `;
   await sql`create index if not exists idx_moderation_reviews_target on moderation_reviews(target_type, target_id)`;
 }
 

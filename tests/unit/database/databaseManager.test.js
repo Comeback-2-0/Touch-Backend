@@ -29,6 +29,8 @@ test('connectDatabases initializes each configured owner in order', async () => 
         calls.push('astra');
         return {};
       },
+      ping: async () => calls.push('astra:ping'),
+      ensureSchema: async () => calls.push('astra:schema'),
     },
   });
 
@@ -40,6 +42,8 @@ test('connectDatabases initializes each configured owner in order', async () => 
     'neo4j:verify',
     'neo4j:schema',
     'astra',
+    'astra:ping',
+    'astra:schema',
   ]);
   assert.deepEqual(status, {
     mongo: true,
@@ -66,7 +70,10 @@ test('closeDatabases closes persistent clients', async () => {
     neo4j: {
       close: async () => calls.push('neo4j'),
     },
+    astra: {
+      close: async () => calls.push('astra'),
+    },
   });
 
-  assert.deepEqual(calls, ['neo4j', 'redis', 'postgres', 'mongo']);
+  assert.deepEqual(calls, ['astra', 'neo4j', 'redis', 'postgres', 'mongo']);
 });

@@ -13,7 +13,12 @@ const {
   ensureNeo4jSchema,
   closeNeo4j,
 } = require('./neo4jClient');
-const { createAstraClient } = require('./astraClient');
+const {
+  closeCassandra,
+  ensureCassandraSchema,
+  getCassandraClient,
+  pingCassandra,
+} = require('./cassandraClient');
 
 async function connectDatabases({
   mongo = { connect: connectMongo },
@@ -26,7 +31,11 @@ async function connectDatabases({
     verify: () => verifyNeo4jConnectivity(getNeo4jDriver()),
     ensureSchema: () => ensureNeo4jSchema(getNeo4jDriver()),
   },
-  astra = { createClient: createAstraClient },
+  astra = {
+    createClient: getCassandraClient,
+    ping: client => pingCassandra(client),
+    ensureSchema: client => ensureCassandraSchema(client),
+  },
 } = {}) {
   const status = {};
 
@@ -53,7 +62,9 @@ async function connectDatabases({
   }
 
   if (astra) {
-    astra.createClient();
+    const cassandraClient = astra.createClient();
+    if (astra.ping) await astra.ping(cassandraClient);
+    if (astra.ensureSchema) await astra.ensureSchema(cassandraClient);
     status.astra = true;
   }
 
@@ -72,7 +83,9 @@ async function closeDatabases({
     },
   },
   neo4j = { close: closeNeo4j },
+  astra = { close: closeCassandra },
 } = {}) {
+  if (astra) await astra.close();
   if (neo4j) await neo4j.close();
   if (redis) await redis.close();
   if (postgres) await postgres.close();
