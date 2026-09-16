@@ -81,7 +81,8 @@ function createPostgresCommunityRepository(sql = getPostgresClient()) {
       const rows = await sql`
         select * from communities
         where name ilike ${`%${query || ''}%`}
-        order by members_count desc, name asc
+           or description ilike ${`%${query || ''}%`}
+        order by trending_score desc, members_count desc, name asc
         limit 25
       `;
       return mapRows(rows);
@@ -114,6 +115,24 @@ function createPostgresCommunityRepository(sql = getPostgresClient()) {
         joinedAt: toIso(row.joined_at),
         updatedAt: toIso(row.updated_at),
       };
+    },
+    async listMembers(communityId) {
+      const rows = await sql`
+        select user_id, community_id, role, status, joined_at, updated_at
+        from community_memberships
+        where community_id = ${String(communityId)}
+          and status = 'active'
+        order by case role when 'owner' then 0 when 'moderator' then 1 else 2 end, joined_at asc
+        limit 200
+      `;
+      return rows.map(row => ({
+        userId: row.user_id,
+        communityId: row.community_id,
+        role: row.role,
+        status: row.status,
+        joinedAt: toIso(row.joined_at),
+        updatedAt: toIso(row.updated_at),
+      }));
     },
     async create(input) {
       const id = input.id || uuidv4();
@@ -334,6 +353,24 @@ function createPostgresCommunityRepository(sql = getPostgresClient()) {
         returning *
       `;
       return rows[0];
+    },
+    async listPendingOwnershipTransfers({communityId, userId}) {
+      const rows = await sql`
+        select id, community_id, from_user_id, to_user_id, status, created_at
+        from community_ownership_transfers
+        where community_id = ${String(communityId)}
+          and to_user_id = ${String(userId)}
+          and status = 'pending'
+        order by created_at desc
+      `;
+      return rows.map(row => ({
+        id: row.id,
+        communityId: row.community_id,
+        fromUserId: row.from_user_id,
+        toUserId: row.to_user_id,
+        status: row.status,
+        createdAt: toIso(row.created_at),
+      }));
     },
     async acceptOwnershipTransfer({transferId, userId}) {
       const accept = async tx => {

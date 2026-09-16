@@ -32,6 +32,14 @@ const commentSchema = new mongoose.Schema({
   replies: {type: [replySchema], default: []},
 }, {_id: true});
 
+const reportSchema = new mongoose.Schema({
+  reporterId: {type: String, required: true, select: false},
+  reason: {type: String, default: 'other'},
+  context: {type: String, default: ''},
+  status: {type: String, enum: ['pending', 'resolved', 'dismissed'], default: 'pending'},
+  createdAt: {type: Date, default: Date.now},
+}, {_id: true});
+
 const communityContentSchema = new mongoose.Schema({
   communityId: {type: String, required: true, index: true},
   authorId: {type: String, required: true, select: false},
@@ -45,7 +53,11 @@ const communityContentSchema = new mongoose.Schema({
   voters: [{userId: {type: String}, value: Number}],
   comments: {type: [commentSchema], default: []},
   pinned: {type: Boolean, default: false},
-  moderation: {status: {type: String, default: 'none'}, reportsCount: {type: Number, default: 0}},
+  moderation: {
+    status: {type: String, default: 'none'},
+    reportsCount: {type: Number, default: 0},
+    reports: {type: [reportSchema], default: []},
+  },
   publishedAt: Date,
 }, {timestamps: true, collection: 'community_content'});
 

@@ -26,11 +26,26 @@ function communityForViewer(community, membership) {
   return metadata;
 }
 
+function communityForDiscovery(community) {
+  if (!community) return null;
+  const {
+    rules,
+    queueMode,
+    queueScheduleMinutes,
+    queueSchedule,
+    lastQueuePublishedAt,
+    showLeadership,
+    ...metadata
+  } = community;
+  return metadata;
+}
+
 module.exports = {
   canManageCommunity,
   canOwnCommunity,
   canParticipate,
   canViewCommunityContent,
+  communityForDiscovery,
   communityForViewer,
   isActiveMembership,
 };

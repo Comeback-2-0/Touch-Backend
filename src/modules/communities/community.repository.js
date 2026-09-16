@@ -72,6 +72,9 @@ function createCommunityRepository({
     getMembership(userId, communityId) {
       return activeRepository().getMembership(userId, communityId);
     },
+    listMembers(communityId) {
+      return activeRepository().listMembers(communityId);
+    },
     joinCommunity(input) {
       return activeRepository().joinCommunity(input);
     },
@@ -119,6 +122,9 @@ function createCommunityRepository({
     },
     requestOwnershipTransfer(input) {
       return activeRepository().requestOwnershipTransfer(input);
+    },
+    listPendingOwnershipTransfers(input) {
+      return activeRepository().listPendingOwnershipTransfers(input);
     },
     acceptOwnershipTransfer(input) {
       return activeRepository().acceptOwnershipTransfer(input);

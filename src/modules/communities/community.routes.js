@@ -3,7 +3,7 @@ const router = express.Router();
 const communityRepository = require('./community.repository');
 const auth = require('../../middleware/auth');
 const {createInviteToken} = require('./community-invite.service');
-const {communityForViewer, canManageCommunity} = require('./community-access');
+const {communityForDiscovery, communityForViewer, canManageCommunity} = require('./community-access');
 const {normalizeJoinRequestIdentity} = require('./community-join-request.service');
 const {normalizeQueueSchedule} = require('./community-publication.service');
 
@@ -39,10 +39,22 @@ function buildQueueSettings(input = {}, current = {}) {
 
 router.get('/', async (req, res) => {
   try {
-    const communities = await communityRepository.listAll();
-    res.json(communities);
+    const query = String(req.query?.q || '').trim();
+    const communities = query
+      ? await communityRepository.search(query)
+      : await communityRepository.listTrending(Number(req.query?.limit) || 25);
+    res.json(communities.map(communityForDiscovery));
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch communities' });
+  }
+});
+
+router.get('/mine', auth, async (req, res) => {
+  try {
+    const communities = await communityRepository.listJoined(req.user.id);
+    res.json({communities: communities.map(communityForDiscovery)});
+  } catch (err) {
+    res.status(500).json({error: 'Failed to fetch joined communities'});
   }
 });
 
@@ -171,6 +183,15 @@ router.get('/:communityId/join-requests', auth, async (req, res) => {
   } catch { return res.status(500).json({error: 'Failed to load join requests'}); }
 });
 
+router.get('/:communityId/members', auth, async (req, res) => {
+  try {
+    const actor = await communityRepository.getMembership(req.user.id, req.params.communityId);
+    if (!actor || actor.status !== 'active' || !['owner', 'moderator'].includes(actor.role)) return res.status(403).json({error: 'Moderator permission required'});
+    const members = await communityRepository.listMembers(req.params.communityId);
+    return res.json({members});
+  } catch { return res.status(500).json({error: 'Failed to load members'}); }
+});
+
 router.put('/:communityId/join-requests/:requestId', auth, async (req, res) => {
   const decision = String(req.body?.decision || '');
   if (!['approved', 'declined'].includes(decision)) return res.status(400).json({error: 'Decision must be approved or declined'});
@@ -266,6 +287,13 @@ router.post('/:communityId/ownership-transfers', auth, async (req, res) => {
     await communityRepository.audit({communityId: req.params.communityId, actorId: req.user.id, action: 'ownership_transfer_requested', targetType: 'membership', targetId: req.body.toUserId});
     return res.status(201).json({transfer});
   } catch { return res.status(500).json({error: 'Failed to request ownership transfer'}); }
+});
+
+router.get('/:communityId/ownership-transfers/pending', auth, async (req, res) => {
+  try {
+    const transfers = await communityRepository.listPendingOwnershipTransfers({communityId: req.params.communityId, userId: req.user.id});
+    return res.json({transfers});
+  } catch { return res.status(500).json({error: 'Failed to load ownership transfers'}); }
 });
 
 router.post('/:communityId/ownership-transfers/:transferId/accept', auth, async (req, res) => {

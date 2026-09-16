@@ -115,7 +115,7 @@ test('returns refresh sessions from PostgreSQL when Redis cache misses', async (
         userId: 'user-123',
         tokenHash: hashToken('refresh-token'),
         createdAt: new Date('2026-06-18T00:00:00.000Z').toISOString(),
-        expiresAt: new Date('2026-07-18T00:00:00.000Z').toISOString(),
+        expiresAt: new Date('2027-07-18T00:00:00.000Z').toISOString(),
       };
     },
   };

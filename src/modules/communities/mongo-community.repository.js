@@ -32,6 +32,15 @@ async function getMembership(userId, communityId) {
   const group = await Group.findOne({_id: communityId, members: String(userId)});
   return group ? {userId: String(userId), communityId: String(communityId), role: 'member', status: 'active'} : null;
 }
+async function listMembers(communityId) {
+  const group = await Group.findById(communityId);
+  return (group?.members || []).map((userId, index) => ({
+    userId: String(userId),
+    communityId: String(communityId),
+    role: index === 0 ? 'owner' : 'member',
+    status: 'active',
+  }));
+}
 
 async function joinCommunity({ userId, communityId }) {
   const group = await Group.findById(communityId);
@@ -77,6 +86,7 @@ async function updateMembershipRole() { return null; }
 async function audit() { return null; }
 async function listAudit() { return []; }
 async function requestOwnershipTransfer() { return null; }
+async function listPendingOwnershipTransfers() { return []; }
 async function acceptOwnershipTransfer() { return null; }
 
 module.exports = {
@@ -91,6 +101,7 @@ module.exports = {
   search,
   listJoined,
   getMembership,
+  listMembers,
   joinCommunity,
   requestJoin,
   getJoinRequest,
@@ -107,5 +118,6 @@ module.exports = {
   audit,
   listAudit,
   requestOwnershipTransfer,
+  listPendingOwnershipTransfers,
   acceptOwnershipTransfer,
 };

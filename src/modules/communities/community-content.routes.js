@@ -61,13 +61,37 @@ function safeContent(content, {viewerId} = {}) {
   const myVote = viewerId
     ? (voters.find(vote => String(vote.userId) === String(viewerId))?.value || 0)
     : 0;
+  const moderation = content.moderation || {};
   return {
     id: String(content._id), communityId: content.communityId, alias: content.alias,
     text: content.text, link: content.link, media: content.media, state: content.state,
-    score: content.score, pinned: content.pinned, moderation: content.moderation,
+    score: content.score, pinned: content.pinned,
+    moderation: {
+      status: moderation.status || 'none',
+      reportsCount: Number(moderation.reportsCount || 0),
+    },
     myVote,
     comments: sortCommentsLikeLegacy(content.comments || []).map(comment => safeComment(comment, viewerId)),
     createdAt: content.createdAt, publishedAt: content.publishedAt,
+  };
+}
+
+function normalizeReportInput(body = {}) {
+  const reason = String(body.reason || 'other').trim().slice(0, 80) || 'other';
+  const context = String(body.context || '').trim().slice(0, 1000);
+  return {reason, context};
+}
+
+function safeReport(post, report) {
+  return {
+    id: String(report._id || `${post._id}-${report.createdAt || ''}`),
+    contentId: String(post._id),
+    postAlias: post.alias,
+    postText: post.text,
+    reason: report.reason || 'other',
+    context: report.context || '',
+    status: report.status || 'pending',
+    createdAt: report.createdAt,
   };
 }
 
@@ -86,6 +110,16 @@ function createCommunityContentRoutes({repository = communityRepository, Content
 
   router.get('/feed', auth, async (req, res) => { try { await context(req); const posts = await Content.find({communityId: req.params.communityId, state: 'published'}).sort({pinned: -1, publishedAt: -1, createdAt: -1}).limit(30); return res.json({posts: posts.map(post => safeContent(post, {viewerId: req.user.id}))}); } catch (err) { return sendError(res, err); } });
   router.get('/queue', auth, async (req, res) => { try { const {membership} = await context(req, {participate: true}); const posts = await Content.find({communityId: req.params.communityId, state: 'queued'}).sort({score: -1, createdAt: 1}).limit(30); return res.json({posts: posts.map(post => safeContent(post, {viewerId: req.user.id})), canManage: canManageCommunity(membership)}); } catch (err) { return sendError(res, err); } });
+  router.get('/reports', auth, async (req, res) => {
+    try {
+      await context(req, {manage: true});
+      const posts = await Content.find({communityId: req.params.communityId, 'moderation.status': 'pending'}).sort({updatedAt: -1}).limit(50);
+      const reports = posts.flatMap(post => (post.moderation?.reports || [])
+        .filter(report => (report.status || 'pending') === 'pending')
+        .map(report => safeReport(post, report)));
+      return res.json({reports});
+    } catch (err) { return sendError(res, err); }
+  });
   router.post('/queue', auth, (req, res) => upload.single('media')(req, res, async err => { if (err) return sendError(res, httpError('Community media must be 25 MB or smaller', 400)); let uploaded; try { await context(req, {participate: true}); validateCommunityContent({text: req.body?.text, files: req.file ? [req.file] : []}); uploaded = req.file ? await storage.uploadCommunityMedia(req.file) : null; if (req.file) validateUploadedCommunityMedia(uploaded, req.file.mimetype); const media = req.file ? {type: req.file.mimetype.startsWith('video/') ? 'video' : req.file.mimetype === 'image/gif' ? 'sticker' : 'image', url: uploaded.url, publicId: uploaded.publicId, mimeType: req.file.mimetype} : null; const post = await Content.create({communityId: req.params.communityId, authorId: req.user.id, alias: newAnonymousAlias(), text: String(req.body?.text || ''), link: String(req.body?.link || ''), media}); return res.status(201).json({post: safeContent(post, {viewerId: req.user.id})}); } catch (error) { if (uploaded?.publicId) await storage.deleteCommunityMedia?.(uploaded.publicId, req.file?.mimetype.startsWith('video/')); return sendError(res, error); } }));
   router.post('/queue/publish-top', auth, async (req, res) => {
     try {
@@ -111,6 +145,14 @@ function createCommunityContentRoutes({repository = communityRepository, Content
     } catch (err) { return sendError(res, err); }
   });
   router.post('/:contentId/publish', auth, async (req, res) => { try { await context(req, {manage: true}); const post = await Content.findOneAndUpdate({_id: req.params.contentId, communityId: req.params.communityId, state: 'queued'}, {$set: {state: 'published', publishedAt: new Date()}}, {new: true}); if (!post) throw httpError('Queued post not found', 404); return res.json({post: safeContent(post, {viewerId: req.user.id})}); } catch (err) { return sendError(res, err); } });
+  router.get('/:contentId', auth, async (req, res) => {
+    try {
+      await context(req);
+      const post = await Content.findOne({_id: req.params.contentId, communityId: req.params.communityId, state: 'published'});
+      if (!post) throw httpError('Post unavailable', 404);
+      return res.json({post: safeContent(post, {viewerId: req.user.id})});
+    } catch (err) { return sendError(res, err); }
+  });
   router.post('/:contentId/react', auth, async (req, res) => { try { await context(req, {participate: true}); const value = String(req.body?.value || 'like'); if (!['like', 'love', 'laugh', 'support'].includes(value)) throw httpError('Unsupported reaction', 400); const post = await Content.findOne({_id: req.params.contentId, communityId: req.params.communityId, state: 'published'}).select('+authorId'); if (!post) throw httpError('Published post not found', 404); const previous = post.reactions.find(reaction => String(reaction.userId) === String(req.user.id)); if (previous) previous.value = value; else post.reactions.push({userId: req.user.id, value}); await post.save(); return res.json({post: safeContent(post, {viewerId: req.user.id})}); } catch (err) { return sendError(res, err); } });
   router.post('/:contentId/comments', auth, async (req, res) => { try { await context(req, {participate: true}); const text = String(req.body?.text || '').trim(); if (!text) throw httpError('Comment text is required', 400); const post = await Content.findOne({_id: req.params.contentId, communityId: req.params.communityId, state: 'published'}); if (!post) throw httpError('Published post not found', 404); post.comments.push({authorId: req.user.id, alias: newAnonymousAlias(), text}); await post.save(); return res.status(201).json({post: safeContent(post, {viewerId: req.user.id})}); } catch (err) { return sendError(res, err); } });
   router.get('/:contentId/comments', auth, async (req, res) => {
@@ -157,7 +199,24 @@ function createCommunityContentRoutes({repository = communityRepository, Content
   router.post('/:contentId/comments/:commentId/replies/:replyId/like', auth, (req, res) => engageComment(req, res, 'like'));
   router.post('/:contentId/comments/:commentId/replies/:replyId/dislike', auth, (req, res) => engageComment(req, res, 'dislike'));
   router.post('/:contentId/comments/:commentId/replies/:replyId/report', auth, (req, res) => engageComment(req, res, 'report'));
-  router.post('/:contentId/report', auth, async (req, res) => { try { await context(req, {participate: true}); const post = await Content.findOneAndUpdate({_id: req.params.contentId, communityId: req.params.communityId}, {$inc: {'moderation.reportsCount': 1}, $set: {'moderation.status': 'pending'}}, {new: true}); if (!post) throw httpError('Post not found', 404); return res.json({post: safeContent(post, {viewerId: req.user.id})}); } catch (err) { return sendError(res, err); } });
+  router.post('/:contentId/report', auth, async (req, res) => {
+    try {
+      await context(req, {participate: true});
+      const post = await Content.findOne({_id: req.params.contentId, communityId: req.params.communityId});
+      if (!post) throw httpError('Post not found', 404);
+      const {reason, context: reportContext} = normalizeReportInput(req.body);
+      if (!post.moderation) post.moderation = {};
+      if (!Array.isArray(post.moderation.reports)) post.moderation.reports = [];
+      const alreadyReported = post.moderation.reports.some(report => String(report.reporterId) === String(req.user.id));
+      if (!alreadyReported) {
+        post.moderation.reports.push({reporterId: String(req.user.id), reason, context: reportContext});
+        post.moderation.reportsCount = Number(post.moderation.reportsCount || 0) + 1;
+      }
+      post.moderation.status = 'pending';
+      await post.save();
+      return res.json({post: safeContent(post, {viewerId: req.user.id})});
+    } catch (err) { return sendError(res, err); }
+  });
   router.put('/:contentId/moderation', auth, async (req, res) => { try { await context(req, {manage: true}); const action = String(req.body?.action || ''); const patch = action === 'reject' ? {state: 'rejected', 'moderation.status': 'rejected'} : action === 'remove' ? {state: 'removed', 'moderation.status': 'removed'} : action === 'restore' ? {state: 'published', 'moderation.status': 'approved'} : null; if (!patch) throw httpError('Unsupported moderation action', 400); const post = await Content.findOneAndUpdate({_id: req.params.contentId, communityId: req.params.communityId}, {$set: patch}, {new: true}); if (!post) throw httpError('Post not found', 404); await repository.audit({communityId: req.params.communityId, actorId: req.user.id, action: `content_${action}`, targetType: 'content', targetId: req.params.contentId}); return res.json({post: safeContent(post, {viewerId: req.user.id})}); } catch (err) { return sendError(res, err); } });
   router.put('/:contentId/pin', auth, async (req, res) => { try { await context(req, {manage: true}); const post = await Content.findOneAndUpdate({_id: req.params.contentId, communityId: req.params.communityId, state: 'published'}, {$set: {pinned: Boolean(req.body?.pinned)}}, {new: true}); if (!post) throw httpError('Published post not found', 404); await repository.audit({communityId: req.params.communityId, actorId: req.user.id, action: req.body?.pinned ? 'content_pinned' : 'content_unpinned', targetType: 'content', targetId: req.params.contentId}); return res.json({post: safeContent(post, {viewerId: req.user.id})}); } catch (err) { return sendError(res, err); } });
   return router;

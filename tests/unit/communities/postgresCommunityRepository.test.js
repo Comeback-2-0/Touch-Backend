@@ -172,6 +172,20 @@ test('owners can update community visibility and queue settings', async () => {
   assert.match(calls[0].query, /update communities/i);
 });
 
+test('community search matches description and keeps trending order first', async () => {
+  const calls = [];
+  const sql = async (strings, ...values) => {
+    calls.push({query: strings.join('?'), values});
+    return [{id:'community-1',name:'Quiet',description:'soft place',image:'',members_count:1,trending_score:9,created_at:new Date()}];
+  };
+
+  const communities = await createPostgresCommunityRepository(sql).search('soft');
+
+  assert.equal(communities[0].id, 'community-1');
+  assert.match(calls[0].query, /description ilike/i);
+  assert.match(calls[0].query, /order by trending_score desc/i);
+});
+
 test('ownership acceptance uses one postgres transaction for the role swap', async () => {
   let began = false;
   const sql = async () => [{id:'transfer-1',community_id:'community-1',from_user_id:'owner-1',to_user_id:'member-1'}];
@@ -203,6 +217,19 @@ test('muting a community stores a notification preference without changing membe
   assert.deepEqual(preference, {userId: 'user-1', communityId: 'community-1', muted: true});
   assert.match(calls[0].query, /insert into community_notification_preferences/i);
   assert.doesNotMatch(calls[0].query, /community_memberships/i);
+});
+
+test('listing members returns active role records without profile joins', async () => {
+  const calls = [];
+  const sql = async (strings, ...values) => {
+    calls.push({query: strings.join('?'), values});
+    return [{user_id:'user-1', community_id:'community-1', role:'owner', status:'active', joined_at:new Date('2026-01-01')}];
+  };
+  const members = await createPostgresCommunityRepository(sql).listMembers('community-1');
+  assert.equal(members[0].role, 'owner');
+  assert.equal(members[0].userId, 'user-1');
+  assert.doesNotMatch(calls[0].query, /join users/i);
+  assert.match(calls[0].query, /status = 'active'/i);
 });
 
 test('approving a join request activates that requester without exposing a global profile', async () => {
