@@ -16,6 +16,7 @@ test('postgres schema owns transactional tables only', async () => {
   assert.match(schemaSql, /create table if not exists users/i);
   assert.match(schemaSql, /create table if not exists refresh_sessions/i);
   assert.match(schemaSql, /create table if not exists communities/i);
+  assert.match(schemaSql, /trending_reason/i);
   assert.match(schemaSql, /create table if not exists community_memberships/i);
   assert.match(schemaSql, /create table if not exists notification_preferences/i);
   assert.match(schemaSql, /create table if not exists reports/i);

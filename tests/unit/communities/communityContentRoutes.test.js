@@ -78,6 +78,8 @@ test('direct content lookup returns the selected published post without scanning
 
   assert.equal(response.status, 200);
   assert.equal(response.body.post.id, 'post-1');
+  assert.equal(response.body.post.commentsCount, 0);
+  assert.equal(typeof response.body.post.viewerAlias, 'string');
   assert.deepEqual(findOneArgs, {
     _id: 'post-1',
     communityId: 'community-1',

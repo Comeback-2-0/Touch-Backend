@@ -1,5 +1,6 @@
 function selectEligibleQueuePost(posts) {
-  return [...posts].sort((left, right) => right.score - left.score || new Date(left.createdAt) - new Date(right.createdAt))[0] || null;
+  const {sortQueuePosts} = require('./community-content.service');
+  return sortQueuePosts(posts)[0] || null;
 }
 
 function parseTimeToMinutes(value) {

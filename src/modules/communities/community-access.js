@@ -22,7 +22,7 @@ function canOwnCommunity(membership) {
 
 function communityForViewer(community, membership) {
   if (community?.contentVisibility !== 'members' || isActiveMembership(membership)) return community;
-  const {rules, queueMode, queueScheduleMinutes, queueSchedule, showLeadership, ...metadata} = community;
+  const {rules, queueMode, queueScheduleMinutes, queueSchedule, queueAutoDeleteDays, showLeadership, ...metadata} = community;
   return metadata;
 }
 
@@ -33,6 +33,7 @@ function communityForDiscovery(community) {
     queueMode,
     queueScheduleMinutes,
     queueSchedule,
+    queueAutoDeleteDays,
     lastQueuePublishedAt,
     showLeadership,
     ...metadata

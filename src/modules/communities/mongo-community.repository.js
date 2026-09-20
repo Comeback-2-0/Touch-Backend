@@ -14,8 +14,11 @@ async function create({name, description = '', image = '', createdBy}) {
 async function update(communityId, input) { return Group.findByIdAndUpdate(communityId, {$set: input}, {new: true}); }
 
 function listTrending(limit = 5) {
-  return Group.find().sort({ trendingScore: -1 }).limit(limit);
+  return Group.find({suspendedAt: null}).sort({ trendingScore: -1 }).limit(limit);
 }
+
+async function updateTrending() { return null; }
+async function countRecentJoins() { return 0; }
 async function listScheduled() { return []; }
 async function markQueuePublished() { return null; }
 async function setSuspension() { return null; }
@@ -69,6 +72,7 @@ async function countPendingJoinRequests() { return 0; }
 async function listJoinRequests() { return []; }
 async function reviewJoinRequest() { return null; }
 async function createInvite() { return null; }
+async function listInvites() { return []; }
 async function acceptInvite({userId, communityId}) { return joinCommunity({userId, communityId}); }
 async function revokeInvite() { return false; }
 
@@ -83,6 +87,7 @@ async function setCommunityNotificationMute({userId, communityId, muted}) {
 }
 
 async function updateMembershipRole() { return null; }
+async function recoverOwnership() { return null; }
 async function audit() { return null; }
 async function listAudit() { return []; }
 async function requestOwnershipTransfer() { return null; }
@@ -95,6 +100,8 @@ module.exports = {
   create,
   update,
   listTrending,
+  updateTrending,
+  countRecentJoins,
   listScheduled,
   markQueuePublished,
   setSuspension,
@@ -110,11 +117,13 @@ module.exports = {
   listJoinRequests,
   reviewJoinRequest,
   createInvite,
+  listInvites,
   acceptInvite,
   revokeInvite,
   leaveCommunity,
   setCommunityNotificationMute,
   updateMembershipRole,
+  recoverOwnership,
   audit,
   listAudit,
   requestOwnershipTransfer,

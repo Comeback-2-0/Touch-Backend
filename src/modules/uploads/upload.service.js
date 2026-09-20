@@ -21,14 +21,35 @@ function validateProfilePicture(file) {
   }
 }
 
+function validateCommunityImage(file) {
+  if (!file) {
+    throw httpError('communityImage file is required', 400);
+  }
+
+  if (!ALLOWED_IMAGE_TYPES.has(file.mimetype)) {
+    throw httpError('Community image must be a JPEG, PNG, or WebP image', 400);
+  }
+
+  if (file.size > MAX_PROFILE_IMAGE_BYTES) {
+    throw httpError('Community image must be 5 MB or smaller', 400);
+  }
+}
+
 async function uploadProfilePicture(file, storage = cloudinaryStorage) {
   validateProfilePicture(file);
   return storage.uploadProfileImage(file);
 }
 
+async function uploadCommunityImage(file, storage = cloudinaryStorage) {
+  validateCommunityImage(file);
+  return storage.uploadCommunityImage(file);
+}
+
 module.exports = {
   uploadProfilePicture,
+  uploadCommunityImage,
   validateProfilePicture,
+  validateCommunityImage,
   ALLOWED_IMAGE_TYPES,
   MAX_PROFILE_IMAGE_BYTES,
 };

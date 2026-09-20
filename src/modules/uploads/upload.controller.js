@@ -10,6 +10,14 @@ function createUploadController(uploadService = defaultUploadService) {
         return res.status(err.statusCode || 500).json({ error: err.message || 'Upload failed' });
       }
     },
+    uploadCommunityImage: async (req, res) => {
+      try {
+        const result = await uploadService.uploadCommunityImage(req.file);
+        return res.status(200).json(result);
+      } catch (err) {
+        return res.status(err.statusCode || 500).json({ error: err.message || 'Upload failed' });
+      }
+    },
   };
 }
 

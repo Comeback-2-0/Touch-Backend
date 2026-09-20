@@ -40,6 +40,8 @@ test('discovery community cards never expose private rules or queue settings', (
     rules: 'Secret rules',
     contentVisibility: 'members',
     joinMode: 'approval',
+    trendingScore: 12,
+    trendingReason: 'Hot queue',
     queueMode: 'scheduled',
     queueScheduleMinutes: 60,
     queueSchedule: {type: 'daily'},
@@ -52,6 +54,8 @@ test('discovery community cards never expose private rules or queue settings', (
     name: 'Quiet',
     contentVisibility: 'members',
     joinMode: 'approval',
+    trendingScore: 12,
+    trendingReason: 'Hot queue',
   });
 });
 

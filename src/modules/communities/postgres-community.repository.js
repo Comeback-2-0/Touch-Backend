@@ -19,6 +19,7 @@ function mapCommunityRow(row) {
     image: row.image || '',
     membersCount: Number(row.members_count || 0),
     trendingScore: Number(row.trending_score || 0),
+    trendingReason: row.trending_reason || '',
     rules: row.rules || '',
     contentVisibility: row.content_visibility === 'members' ? 'members' : 'public',
     joinMode: row.join_mode || 'open',
@@ -26,6 +27,7 @@ function mapCommunityRow(row) {
     queueMode: row.queue_mode || 'manual',
     queueScheduleMinutes: row.queue_schedule_minutes || null,
     queueSchedule: row.queue_schedule || null,
+    queueAutoDeleteDays: Number(row.queue_auto_delete_days || 0),
     lastQueuePublishedAt: toIso(row.last_queue_published_at),
     suspendedAt: toIso(row.suspended_at),
     createdAt: toIso(row.created_at),
@@ -39,6 +41,27 @@ function createPostgresCommunityRepository(sql = getPostgresClient()) {
   }
 
   return {
+    async updateTrending(communityId, {trendingScore = 0, trendingReason = ''} = {}) {
+      const rows = await sql`
+        update communities
+        set trending_score = ${Number(trendingScore) || 0},
+            trending_reason = ${String(trendingReason || '')},
+            updated_at = now()
+        where id = ${String(communityId)}
+        returning *
+      `;
+      return mapCommunityRow(rows[0]);
+    },
+    async countRecentJoins(communityId, since) {
+      const rows = await sql`
+        select count(*)::int as count
+        from community_memberships
+        where community_id = ${String(communityId)}
+          and status = 'active'
+          and joined_at >= ${since instanceof Date ? since : new Date(since)}
+      `;
+      return Number(rows[0]?.count || 0);
+    },
     async findById(communityId) {
       const rows = await sql`
         select * from communities
@@ -57,6 +80,11 @@ function createPostgresCommunityRepository(sql = getPostgresClient()) {
     async listTrending(limit = 5) {
       const rows = await sql`
         select * from communities
+        where suspended_at is null
+          and (
+            trending_score > 0
+            or created_at >= now() - interval '7 days'
+          )
         order by trending_score desc, members_count desc, created_at desc
         limit ${Number(limit)}
       `;
@@ -140,14 +168,16 @@ function createPostgresCommunityRepository(sql = getPostgresClient()) {
       const rows = await sql`
         insert into communities (
           id, name, description, image, created_by, rules, content_visibility,
-          join_mode, show_leadership, queue_mode, queue_schedule_minutes, queue_schedule, members_count
+          join_mode, show_leadership, queue_mode, queue_schedule_minutes, queue_schedule,
+          queue_auto_delete_days, members_count
         )
         values (
           ${id}, ${input.name || ''}, ${input.description || ''},
           ${input.image || ''}, ${input.createdBy || null}, ${input.rules || ''},
           ${input.contentVisibility || 'public'}, ${input.joinMode || 'open'},
           ${Boolean(input.showLeadership)}, ${input.queueMode || 'manual'},
-          ${input.queueScheduleMinutes || null}, ${scheduleJson}, 1
+          ${input.queueScheduleMinutes || null}, ${scheduleJson},
+          ${Math.max(0, Math.min(365, Number(input.queueAutoDeleteDays) || 0))}, 1
         )
         returning *
       `;
@@ -163,7 +193,9 @@ function createPostgresCommunityRepository(sql = getPostgresClient()) {
         update communities set name = ${input.name || ''}, description = ${input.description || ''}, image = ${input.image || ''}, rules = ${input.rules || ''},
           content_visibility = ${input.contentVisibility || 'public'}, join_mode = ${input.joinMode || 'open'}, show_leadership = ${Boolean(input.showLeadership)},
           queue_mode = ${input.queueMode || 'manual'}, queue_schedule_minutes = ${input.queueScheduleMinutes || null},
-          queue_schedule = ${scheduleJson}, updated_at = now()
+          queue_schedule = ${scheduleJson},
+          queue_auto_delete_days = ${Math.max(0, Math.min(365, Number(input.queueAutoDeleteDays) || 0))},
+          updated_at = now()
         where id = ${String(communityId)} returning *
       `;
       return mapCommunityRow(rows[0]);
@@ -284,6 +316,25 @@ function createPostgresCommunityRepository(sql = getPostgresClient()) {
       const row = rows[0];
       return {id: row.id, communityId: row.community_id, expiresAt: toIso(row.expires_at), maxUses: row.max_uses, usesCount: Number(row.uses_count || 0), createdAt: toIso(row.created_at)};
     },
+    async listInvites(communityId) {
+      const rows = await sql`
+        select id, community_id, expires_at, max_uses, uses_count, created_at
+        from community_invite_links
+        where community_id = ${String(communityId)}
+          and revoked_at is null
+          and (expires_at is null or expires_at > now())
+        order by created_at desc
+        limit 50
+      `;
+      return rows.map(row => ({
+        id: row.id,
+        communityId: row.community_id,
+        expiresAt: toIso(row.expires_at),
+        maxUses: row.max_uses,
+        usesCount: Number(row.uses_count || 0),
+        createdAt: toIso(row.created_at),
+      }));
+    },
     async acceptInvite({communityId, userId, token}) {
       const rows = await sql`
         update community_invite_links set uses_count = uses_count + 1
@@ -330,6 +381,28 @@ function createPostgresCommunityRepository(sql = getPostgresClient()) {
         returning *
       `;
       return rows[0] || null;
+    },
+    async recoverOwnership({communityId, toUserId}) {
+      const target = await sql`
+        select user_id from community_memberships
+        where community_id = ${String(communityId)} and user_id = ${String(toUserId)} and status = 'active'
+        limit 1
+      `;
+      if (!target[0]) return null;
+      await sql`
+        update community_memberships
+        set role = case when role = 'owner' then 'moderator' else role end, updated_at = now()
+        where community_id = ${String(communityId)} and status = 'active' and role = 'owner'
+      `;
+      const rows = await sql`
+        update community_memberships
+        set role = 'owner', updated_at = now()
+        where community_id = ${String(communityId)} and user_id = ${String(toUserId)} and status = 'active'
+        returning *
+      `;
+      return rows[0]
+        ? {membership: {userId: rows[0].user_id, communityId: rows[0].community_id, role: rows[0].role, status: rows[0].status}}
+        : null;
     },
     async audit({communityId, actorId, action, targetType = '', targetId = '', metadata = {}}) {
       await sql`

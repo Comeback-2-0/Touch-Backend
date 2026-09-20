@@ -6,6 +6,15 @@ cron.schedule('* * * * *', async () => {
   try { await runCommunityPublication(); } catch (error) { console.error('[CRON] Community publication failed', error); }
 });
 
+cron.schedule('*/5 * * * *', async () => {
+  try {
+    const {runCommunityTrending} = require('./community-trending');
+    await runCommunityTrending();
+  } catch (error) {
+    console.error('[CRON] Community trending failed', error);
+  }
+});
+
 cron.schedule('0 0 * * *', async () => {
   console.log('[CRON] Running post promotion task');
 

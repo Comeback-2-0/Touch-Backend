@@ -54,6 +54,12 @@ function createCommunityRepository({
     listTrending(limit) {
       return activeRepository().listTrending(limit);
     },
+    updateTrending(communityId, input) {
+      return activeRepository().updateTrending(communityId, input);
+    },
+    countRecentJoins(communityId, since) {
+      return activeRepository().countRecentJoins(communityId, since);
+    },
     listScheduled() {
       return activeRepository().listScheduled();
     },
@@ -99,6 +105,9 @@ function createCommunityRepository({
     createInvite(input) {
       return activeRepository().createInvite(input);
     },
+    listInvites(communityId) {
+      return activeRepository().listInvites(communityId);
+    },
     acceptInvite(input) {
       return activeRepository().acceptInvite(input);
     },
@@ -113,6 +122,9 @@ function createCommunityRepository({
     },
     updateMembershipRole(input) {
       return activeRepository().updateMembershipRole(input);
+    },
+    recoverOwnership(input) {
+      return activeRepository().recoverOwnership(input);
     },
     audit(input) {
       return activeRepository().audit(input);

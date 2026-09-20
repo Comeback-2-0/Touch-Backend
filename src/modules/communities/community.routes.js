@@ -4,12 +4,33 @@ const communityRepository = require('./community.repository');
 const auth = require('../../middleware/auth');
 const {createInviteToken} = require('./community-invite.service');
 const {communityForDiscovery, communityForViewer, canManageCommunity} = require('./community-access');
+const {scheduleCommunityTrendingRecompute} = require('./community-trending');
 const {normalizeJoinRequestIdentity} = require('./community-join-request.service');
 const {normalizeQueueSchedule} = require('./community-publication.service');
 
 function sendError(res, err) {
   const status = err.statusCode || 500;
   return res.status(status).json({error: err.message || 'Request failed'});
+}
+
+function isPlatformAdmin(req) {
+  return req.user?.role === 'admin';
+}
+
+function canManageOrAdmin(req, membership) {
+  return isPlatformAdmin(req) || canManageCommunity(membership);
+}
+
+function normalizeCommunityImageUrl(image) {
+  const value = String(image || '').trim();
+  if (!value) return '';
+  // Reject device-local paths that disappear after reinstall / cache clear.
+  if (/^(file:|content:|ph:|assets-library:)/i.test(value)) {
+    const err = new Error('Community image must be uploaded before saving');
+    err.statusCode = 400;
+    throw err;
+  }
+  return value;
 }
 
 function deriveQueueScheduleMinutes(queueMode, queueSchedule) {
@@ -67,7 +88,7 @@ router.post('/', auth, async (req, res) => {
   try {
     const queueSettings = buildQueueSettings({queueMode, queueScheduleMinutes, queueSchedule});
     const community = await communityRepository.create({
-      name: String(name).trim(), description: String(description), image: String(image), rules: String(rules),
+      name: String(name).trim(), description: String(description), image: normalizeCommunityImageUrl(image), rules: String(rules),
       contentVisibility, joinMode, showLeadership: Boolean(showLeadership),
       ...queueSettings,
       createdBy: req.user.id,
@@ -87,7 +108,7 @@ router.get('/:communityId', auth, async (req, res) => {
     const joinRequest = membership?.status === 'active'
       ? null
       : await communityRepository.getJoinRequest({userId: req.user.id, communityId: req.params.communityId});
-    const pendingJoinRequestCount = canManageCommunity(membership)
+    const pendingJoinRequestCount = canManageOrAdmin(req, membership)
       ? await communityRepository.countPendingJoinRequests(req.params.communityId)
       : 0;
     return res.json({
@@ -95,6 +116,10 @@ router.get('/:communityId', auth, async (req, res) => {
       membership,
       joinRequest,
       pendingJoinRequestCount,
+      viewerPermissions: {
+        platformAdmin: isPlatformAdmin(req),
+        canManage: canManageOrAdmin(req, membership),
+      },
     });
   } catch (err) {
     return res.status(500).json({error: 'Failed to fetch community'});
@@ -115,6 +140,9 @@ router.put('/:communityId', auth, async (req, res) => {
     const community = await communityRepository.update(req.params.communityId, {
       ...current,
       ...input,
+      image: normalizeCommunityImageUrl(
+        Object.prototype.hasOwnProperty.call(input, 'image') ? input.image : current.image,
+      ),
       ...queueSettings,
     });
     if (!community) return res.status(404).json({error: 'Community not found'});
@@ -151,6 +179,7 @@ router.post('/:communityId/join', auth, async (req, res) => {
       userId: req.user.id,
       communityId: req.params.communityId,
     });
+    scheduleCommunityTrendingRecompute(req.params.communityId);
     return res.status(200).json({community: membership, membership: {role: 'member', status: 'active'}, joinRequest: null});
   } catch (err) {
     return sendError(res, err.statusCode ? err : Object.assign(new Error('Failed to join community'), {statusCode: 500}));
@@ -178,7 +207,7 @@ router.post('/:communityId/leave', auth, async (req, res) => {
 router.get('/:communityId/join-requests', auth, async (req, res) => {
   try {
     const actor = await communityRepository.getMembership(req.user.id, req.params.communityId);
-    if (!actor || actor.status !== 'active' || !['owner', 'moderator'].includes(actor.role)) return res.status(403).json({error: 'Moderator permission required'});
+    if (!canManageOrAdmin(req, actor)) return res.status(403).json({error: 'Moderator permission required'});
     return res.json({requests: await communityRepository.listJoinRequests(req.params.communityId)});
   } catch { return res.status(500).json({error: 'Failed to load join requests'}); }
 });
@@ -186,7 +215,7 @@ router.get('/:communityId/join-requests', auth, async (req, res) => {
 router.get('/:communityId/members', auth, async (req, res) => {
   try {
     const actor = await communityRepository.getMembership(req.user.id, req.params.communityId);
-    if (!actor || actor.status !== 'active' || !['owner', 'moderator'].includes(actor.role)) return res.status(403).json({error: 'Moderator permission required'});
+    if (!canManageOrAdmin(req, actor)) return res.status(403).json({error: 'Moderator permission required'});
     const members = await communityRepository.listMembers(req.params.communityId);
     return res.json({members});
   } catch { return res.status(500).json({error: 'Failed to load members'}); }
@@ -197,10 +226,11 @@ router.put('/:communityId/join-requests/:requestId', auth, async (req, res) => {
   if (!['approved', 'declined'].includes(decision)) return res.status(400).json({error: 'Decision must be approved or declined'});
   try {
     const actor = await communityRepository.getMembership(req.user.id, req.params.communityId);
-    if (!actor || actor.status !== 'active' || !['owner', 'moderator'].includes(actor.role)) return res.status(403).json({error: 'Moderator permission required'});
+    if (!canManageOrAdmin(req, actor)) return res.status(403).json({error: 'Moderator permission required'});
     const request = await communityRepository.reviewJoinRequest({requestId: req.params.requestId, reviewerId: req.user.id, decision});
     if (!request || String(request.communityId) !== String(req.params.communityId)) return res.status(404).json({error: 'Pending join request not found'});
     await communityRepository.audit({communityId: req.params.communityId, actorId: req.user.id, action: `join_request_${decision}`, targetType: 'join_request', targetId: req.params.requestId});
+    if (decision === 'approved') scheduleCommunityTrendingRecompute(req.params.communityId);
     return res.json({request});
   } catch { return res.status(500).json({error: 'Failed to review join request'}); }
 });
@@ -208,7 +238,7 @@ router.put('/:communityId/join-requests/:requestId', auth, async (req, res) => {
 router.post('/:communityId/invites', auth, async (req, res) => {
   try {
     const actor = await communityRepository.getMembership(req.user.id, req.params.communityId);
-    if (!actor || actor.status !== 'active' || !['owner', 'moderator'].includes(actor.role)) return res.status(403).json({error: 'Moderator permission required'});
+    if (!canManageOrAdmin(req, actor)) return res.status(403).json({error: 'Moderator permission required'});
     const token = createInviteToken();
     const invite = await communityRepository.createInvite({communityId: req.params.communityId, createdBy: req.user.id, token, expiresAt: req.body?.expiresAt || null, maxUses: Number(req.body?.maxUses) || null});
     await communityRepository.audit({communityId: req.params.communityId, actorId: req.user.id, action: 'invite_created', targetType: 'invite', targetId: invite.id});
@@ -216,11 +246,20 @@ router.post('/:communityId/invites', auth, async (req, res) => {
   } catch { return res.status(500).json({error: 'Failed to create invite'}); }
 });
 
+router.get('/:communityId/invites', auth, async (req, res) => {
+  try {
+    const actor = await communityRepository.getMembership(req.user.id, req.params.communityId);
+    if (!canManageOrAdmin(req, actor)) return res.status(403).json({error: 'Moderator permission required'});
+    return res.json({invites: await communityRepository.listInvites(req.params.communityId)});
+  } catch { return res.status(500).json({error: 'Failed to load invites'}); }
+});
+
 router.post('/:communityId/invites/accept', auth, async (req, res) => {
   if (!req.body?.token) return res.status(400).json({error: 'Invite token is required'});
   try {
     const community = await communityRepository.acceptInvite({communityId: req.params.communityId, userId: req.user.id, token: req.body.token});
     if (!community) return res.status(404).json({error: 'Invite is invalid, expired, or revoked'});
+    scheduleCommunityTrendingRecompute(req.params.communityId);
     return res.json({community, membership: {role: 'member', status: 'active'}});
   } catch { return res.status(500).json({error: 'Failed to accept invite'}); }
 });
@@ -228,7 +267,7 @@ router.post('/:communityId/invites/accept', auth, async (req, res) => {
 router.delete('/:communityId/invites/:inviteId', auth, async (req, res) => {
   try {
     const actor = await communityRepository.getMembership(req.user.id, req.params.communityId);
-    if (!actor || actor.status !== 'active' || !['owner', 'moderator'].includes(actor.role)) return res.status(403).json({error: 'Moderator permission required'});
+    if (!canManageOrAdmin(req, actor)) return res.status(403).json({error: 'Moderator permission required'});
     if (!await communityRepository.revokeInvite({communityId: req.params.communityId, inviteId: req.params.inviteId})) return res.status(404).json({error: 'Invite not found'});
     await communityRepository.audit({communityId: req.params.communityId, actorId: req.user.id, action: 'invite_revoked', targetType: 'invite', targetId: req.params.inviteId});
     return res.status(204).end();
@@ -260,6 +299,7 @@ router.put('/:communityId/platform-suspension', auth, async (req, res) => {
     const community = await communityRepository.setSuspension(req.params.communityId, Boolean(req.body?.suspended));
     if (!community) return res.status(404).json({error: 'Community not found'});
     await communityRepository.audit({communityId: community.id, actorId: req.user.id, action: community.suspendedAt ? 'platform_suspended' : 'platform_restored', targetType: 'community', targetId: community.id});
+    scheduleCommunityTrendingRecompute(community.id);
     return res.json({community});
   } catch { return res.status(500).json({error: 'Failed to update community suspension'}); }
 });
@@ -269,12 +309,36 @@ router.put('/:communityId/members/:userId/role', auth, async (req, res) => {
     const actor = await communityRepository.getMembership(req.user.id, req.params.communityId);
     if (!actor || actor.status !== 'active' || actor.role !== 'owner') return res.status(403).json({error: 'Owner permission required'});
     const role = req.body?.role;
-    if (!['member', 'moderator'].includes(role)) return res.status(400).json({error: 'Role must be member or moderator'});
+    if (!['member', 'moderator', 'banned'].includes(role)) return res.status(400).json({error: 'Role must be member, moderator, or banned'});
     const membership = await communityRepository.updateMembershipRole({userId: req.params.userId, communityId: req.params.communityId, role});
     if (!membership) return res.status(404).json({error: 'Active member not found'});
-    await communityRepository.audit({communityId: req.params.communityId, actorId: req.user.id, action: 'membership_role_updated', targetType: 'membership', targetId: req.params.userId, metadata: {role}});
+    await communityRepository.audit({communityId: req.params.communityId, actorId: req.user.id, action: role === 'banned' ? 'member_banned' : 'membership_role_updated', targetType: 'membership', targetId: req.params.userId, metadata: {role}});
     return res.json({membership});
   } catch { return res.status(500).json({error: 'Failed to update member role'}); }
+});
+
+router.post('/:communityId/platform-recover-ownership', auth, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({error: 'Platform administrator permission required'});
+  try {
+    const toUserId = String(req.body?.toUserId || '').trim();
+    if (!toUserId) return res.status(400).json({error: 'toUserId is required'});
+    const result = await communityRepository.recoverOwnership({
+      communityId: req.params.communityId,
+      toUserId,
+      actorId: req.user.id,
+    });
+    if (!result) return res.status(404).json({error: 'Could not recover ownership for that member'});
+    await communityRepository.audit({
+      communityId: req.params.communityId,
+      actorId: req.user.id,
+      action: 'platform_ownership_recovered',
+      targetType: 'membership',
+      targetId: toUserId,
+    });
+    return res.json(result);
+  } catch {
+    return res.status(500).json({error: 'Failed to recover ownership'});
+  }
 });
 
 router.post('/:communityId/ownership-transfers', auth, async (req, res) => {

@@ -46,6 +46,14 @@ async function deleteCommunityMedia(publicId, isVideo = false) {
   return cloudinary.uploader.destroy(publicId, {resource_type: isVideo ? 'video' : 'image'});
 }
 
+async function uploadCommunityImage(file) {
+  const result = await uploadBuffer(file, process.env.CLOUDINARY_COMMUNITY_AVATAR_FOLDER || 'touch/community-avatars');
+  return {
+    url: result.secure_url,
+    publicId: result.public_id,
+  };
+}
+
 async function uploadProfileImage(file) {
   const result = await uploadBuffer(file, process.env.CLOUDINARY_PROFILE_FOLDER || 'touch/profile-pictures');
   return {
@@ -82,6 +90,7 @@ module.exports = {
   uploadProfileImage,
   uploadFeedbackImage,
   uploadPostImage,
+  uploadCommunityImage,
   uploadCommunityMedia,
   deleteCommunityMedia,
   deleteProfileImage,

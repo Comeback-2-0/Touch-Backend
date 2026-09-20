@@ -13,6 +13,12 @@ const engagementFields = {
   likedBy: {type: [String], default: []},
   dislikedBy: {type: [String], default: []},
   reportedBy: {type: [String], default: []},
+  reports: {type: [{
+    reporterId: {type: String},
+    reason: {type: String, default: 'other'},
+    context: {type: String, default: ''},
+    createdAt: {type: Date, default: Date.now},
+  }], default: []},
 };
 
 const replySchema = new mongoose.Schema({
@@ -52,6 +58,10 @@ const communityContentSchema = new mongoose.Schema({
   reactions: [{userId: {type: String}, value: String}],
   voters: [{userId: {type: String}, value: Number}],
   comments: {type: [commentSchema], default: []},
+  commentIdentities: {type: [{
+    userId: {type: String},
+    alias: {type: String},
+  }], default: []},
   pinned: {type: Boolean, default: false},
   moderation: {
     status: {type: String, default: 'none'},

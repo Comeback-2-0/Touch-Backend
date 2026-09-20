@@ -7,13 +7,21 @@ const {
   resolveScheduleSlotTimes,
 } = require('../../../src/modules/communities/community-publication.service');
 
-test('scheduled publication selects highest score then oldest queue post', () => {
+test('scheduled publication selects highest upvotes then fewest downvotes then oldest', () => {
   const chosen = selectEligibleQueuePost([
-    {id: 'newer', score: 7, createdAt: new Date('2026-09-02')},
-    {id: 'older', score: 7, createdAt: new Date('2026-09-01')},
-    {id: 'lower', score: 6, createdAt: new Date('2026-08-01')},
+    {id: 'tied-more-down', voters: [{value: 1}, {value: 1}, {value: -1}, {value: -1}], createdAt: new Date('2026-09-01')},
+    {id: 'tied-fewer-down', voters: [{value: 1}, {value: 1}, {value: -1}], createdAt: new Date('2026-09-02')},
+    {id: 'most-likes', voters: [{value: 1}, {value: 1}, {value: 1}], createdAt: new Date('2026-09-03')},
   ]);
-  assert.equal(chosen.id, 'older');
+  assert.equal(chosen.id, 'most-likes');
+});
+
+test('when likes tie, the post with more downvotes ranks lower', () => {
+  const chosen = selectEligibleQueuePost([
+    {id: 'more-down', voters: [{value: 1}, {value: 1}, {value: -1}, {value: -1}], createdAt: new Date('2026-09-01')},
+    {id: 'fewer-down', voters: [{value: 1}, {value: 1}], createdAt: new Date('2026-09-02')},
+  ]);
+  assert.equal(chosen.id, 'fewer-down');
 });
 
 test('normalizes daily schedule at a fixed clock time', () => {

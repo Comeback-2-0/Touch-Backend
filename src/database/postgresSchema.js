@@ -71,6 +71,9 @@ async function ensurePostgresSchema(sql = getPostgresClient()) {
   await sql`alter table communities add column if not exists queue_schedule jsonb`;
   await sql`alter table communities add column if not exists last_queue_published_at timestamptz`;
   await sql`alter table communities add column if not exists suspended_at timestamptz`;
+  await sql`alter table communities add column if not exists queue_auto_delete_days integer not null default 0`;
+  await sql`alter table communities add column if not exists trending_reason text not null default ''`;
+  await sql`create index if not exists idx_communities_trending_score on communities(trending_score desc)`;
 
   await sql`
     create table if not exists community_join_requests (

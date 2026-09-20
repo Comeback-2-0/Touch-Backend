@@ -6,7 +6,7 @@ const { ALLOWED_IMAGE_TYPES, MAX_PROFILE_IMAGE_BYTES } = require('./upload.servi
 
 function fileFilter(req, file, cb) {
   if (!ALLOWED_IMAGE_TYPES.has(file.mimetype)) {
-    cb(Object.assign(new Error('Profile picture must be a JPEG, PNG, or WebP image'), { statusCode: 400 }));
+    cb(Object.assign(new Error('Image must be a JPEG, PNG, or WebP file'), { statusCode: 400 }));
     return;
   }
   cb(null, true);
@@ -30,6 +30,18 @@ function createUploadRoutes({ uploadService } = {}) {
         });
       }
       return controller.uploadProfilePicture(req, res);
+    });
+  });
+
+  router.post('/community-image', auth, (req, res) => {
+    upload.single('communityImage')(req, res, (err) => {
+      if (err) {
+        const isSizeError = err.code === 'LIMIT_FILE_SIZE';
+        return res.status(err.statusCode || 400).json({
+          error: isSizeError ? 'Community image must be 5 MB or smaller' : err.message,
+        });
+      }
+      return controller.uploadCommunityImage(req, res);
     });
   });
 
