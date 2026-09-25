@@ -13,6 +13,9 @@ function redisSocketOptions(url) {
   return {
     tls: true,
     servername: hostname,
+    family: 4,
+    // Default is 5s; Upstash TLS on this network often takes ~12s.
+    connectTimeout: 20000,
   };
 }
 

@@ -13,8 +13,8 @@ function createPostgresClient({
 
   return postgresFactory(url, {
     max: Number(process.env.POSTGRES_MAX_CONNECTIONS || 10),
-    idle_timeout: Number(process.env.POSTGRES_IDLE_TIMEOUT || 20),
-    connect_timeout: Number(process.env.POSTGRES_CONNECT_TIMEOUT || 10),
+    idle_timeout: Number(process.env.POSTGRES_IDLE_TIMEOUT || 60),
+    connect_timeout: Number(process.env.POSTGRES_CONNECT_TIMEOUT || 30),
     ...options,
   });
 }
