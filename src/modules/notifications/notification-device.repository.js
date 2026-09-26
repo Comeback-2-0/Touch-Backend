@@ -38,6 +38,14 @@ function createNotificationDeviceRepository(sql = getPostgresClient()) {
       `;
       return map(rows[0]);
     },
+    async revokeByToken(token) {
+      const rows = await sql`
+        update notification_devices set revoked_at = now(), updated_at = now()
+        where token = ${String(token)} and revoked_at is null
+        returning *
+      `;
+      return map(rows[0]);
+    },
     async revokeAllForUser(userId) {
       const rows = await sql`
         update notification_devices set revoked_at = now(), updated_at = now()
