@@ -159,7 +159,7 @@ function sortCommentsByTime(comments = []) {
 }
 
 function applyPostReaction(post, userId, value) {
-  if (!['like', 'love', 'laugh', 'support'].includes(value)) {
+  if (!['like', 'dislike', 'love', 'laugh', 'support'].includes(value)) {
     throw httpError('Unsupported reaction', 400);
   }
   if (!Array.isArray(post.reactions)) post.reactions = [];
