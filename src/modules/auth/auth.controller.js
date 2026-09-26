@@ -14,6 +14,7 @@ const {
   deleteRefreshSession,
 } = require('./auth.sessions');
 const defaultEmailService = require('../email/email.service');
+const {createNotificationDeviceRepository} = require('../notifications/notification-device.repository');
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -63,6 +64,7 @@ function createAuthController({
   issueTokenPair: createTokens = issueTokenPair,
   userRepository: injectedUserRepository,
   emailService = defaultEmailService,
+  notificationDevices = createNotificationDeviceRepository(),
 } = {}) {
   const repository = injectedUserRepository || users;
 
@@ -169,6 +171,10 @@ function createAuthController({
         const decoded = verifyRefreshToken(refreshToken);
         const redis = await connectRedis();
         await deleteRefreshSession(redis, decoded.sessionId);
+        // A logout invalidates every registered push token for this account.
+        // This prevents notifications being delivered to a device after the
+        // user has explicitly signed out there (including other sessions).
+        await notificationDevices.revokeAllForUser(decoded.sub);
       } catch (err) {
         // Logout should be idempotent from the client perspective.
       }

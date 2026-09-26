@@ -8,6 +8,7 @@ const {scheduleCommunityTrendingRecompute} = require('./community-trending');
 const {normalizeJoinRequestIdentity} = require('./community-join-request.service');
 const {normalizeQueueSchedule} = require('./community-publication.service');
 const {notifyUser} = require('../notifications/notification.service');
+const CommunityContent = require('./community-content.model');
 
 function sendError(res, err) {
   const status = err.statusCode || 500;
@@ -74,7 +75,15 @@ router.get('/', async (req, res) => {
 router.get('/mine', auth, async (req, res) => {
   try {
     const communities = await communityRepository.listJoined(req.user.id);
-    res.json({communities: communities.map(communityForDiscovery)});
+    const enriched = await Promise.all(communities.map(async community => {
+      const summary = communityForDiscovery(community);
+      const cursor = await communityRepository.getCommunityReadCursor({userId: req.user.id, communityId: community.id});
+      const query = {communityId: String(community.id), state: 'published'};
+      if (cursor?.lastReadPostAt) query.createdAt = {$gt: new Date(cursor.lastReadPostAt)};
+      const unread = await CommunityContent.find(query).sort({createdAt: 1, _id: 1}).select({_id: 1}).lean();
+      return {...summary, unreadCount: unread.length, firstUnreadPostId: unread[0]?._id ? String(unread[0]._id) : null};
+    }));
+    res.json({communities: enriched});
   } catch (err) {
     res.status(500).json({error: 'Failed to fetch joined communities'});
   }
