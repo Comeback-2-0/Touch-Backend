@@ -174,6 +174,31 @@ function applyPostReaction(post, userId, value) {
   return post;
 }
 
+function applyPostEngagement(post, userId, action) {
+  if (!['like', 'dislike'].includes(action)) throw httpError('Unsupported engagement', 400);
+  const id = String(userId);
+  if (!Array.isArray(post.likedBy)) post.likedBy = [];
+  if (!Array.isArray(post.dislikedBy)) post.dislikedBy = [];
+  const likes = post.likedBy;
+  const dislikes = post.dislikedBy;
+  const likeIndex = likes.indexOf(id);
+  const dislikeIndex = dislikes.indexOf(id);
+  if (action === 'like') {
+    if (likeIndex >= 0) likes.splice(likeIndex, 1);
+    else {
+      likes.push(id);
+      if (dislikeIndex >= 0) dislikes.splice(dislikeIndex, 1);
+    }
+  } else if (dislikeIndex >= 0) dislikes.splice(dislikeIndex, 1);
+  else {
+    dislikes.push(id);
+    if (likeIndex >= 0) likes.splice(likeIndex, 1);
+  }
+  post.likes = likes.length;
+  post.dislikes = dislikes.length;
+  return post;
+}
+
 function applyCommentReport(target, userId, {reason, context} = {}) {
   applyCommentEngagement(target, userId, 'report');
   if (!Array.isArray(target.reports)) target.reports = [];
@@ -353,6 +378,7 @@ module.exports = {
   applyCommentEngagement,
   applyCommentReport,
   applyPostReaction,
+  applyPostEngagement,
   applyQueueVote,
   countQueueVotes,
   sortQueuePosts,

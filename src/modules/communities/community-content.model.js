@@ -55,6 +55,7 @@ const communityContentSchema = new mongoose.Schema({
   media: {type: mediaSchema, default: null},
   state: {type: String, enum: ['queued', 'published', 'rejected', 'removed'], default: 'queued', index: true},
   score: {type: Number, default: 0},
+  ...engagementFields,
   reactions: [{userId: {type: String}, value: String}],
   voters: [{userId: {type: String}, value: Number}],
   comments: {type: [commentSchema], default: []},

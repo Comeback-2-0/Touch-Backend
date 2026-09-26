@@ -8,6 +8,7 @@ const {
   applyQueueVote,
   applyCommentEngagement,
   applyPostReaction,
+  applyPostEngagement,
   countThreadComments,
   resolvePostCommentAlias,
   sortCommentsByTime,
@@ -175,4 +176,14 @@ test('tapping the same post reaction again clears it', () => {
   applyPostReaction(post, 'user-1', 'support');
   assert.equal(post.reactions.length, 1);
   assert.equal(post.reactions[0].value, 'support');
+});
+
+test('post likes and dislikes are separate from queue votes and replace each other', () => {
+  const post = {likes: 0, dislikes: 0, likedBy: [], dislikedBy: []};
+  applyPostEngagement(post, 'user-1', 'like');
+  assert.deepEqual({likes: post.likes, dislikes: post.dislikes}, {likes: 1, dislikes: 0});
+  applyPostEngagement(post, 'user-1', 'dislike');
+  assert.deepEqual({likes: post.likes, dislikes: post.dislikes}, {likes: 0, dislikes: 1});
+  applyPostEngagement(post, 'user-1', 'dislike');
+  assert.deepEqual({likes: post.likes, dislikes: post.dislikes}, {likes: 0, dislikes: 0});
 });

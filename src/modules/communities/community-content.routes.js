@@ -13,6 +13,7 @@ const {
   applyCommentEngagement,
   applyCommentReport,
   applyPostReaction,
+  applyPostEngagement,
   sortCommentsLikeLegacy,
   sortCommentsByTime,
   sortRepliesOldestFirst,
@@ -113,6 +114,7 @@ function safeContent(content, {viewerId, commentSort} = {}) {
     },
     reportedByMe: Boolean(viewerId && reportedBy.includes(String(viewerId))),
     reactions: safePostReactions(content, viewerId),
+    ...safeEngagement(content, viewerId),
     myVote,
     comments: sortCommentsForViewer(content.comments || [], commentSort).map(comment => safeComment(comment, viewerId)),
     createdAt: content.createdAt, publishedAt: content.publishedAt,
@@ -318,6 +320,8 @@ function createCommunityContentRoutes({repository = communityRepository, Content
     } catch (err) { return sendError(res, err); }
   });
   router.post('/:contentId/react', auth, async (req, res) => { try { await context(req, {participate: true}); const value = String(req.body?.value || 'like'); const post = await Content.findOne({_id: req.params.contentId, communityId: req.params.communityId, state: 'published'}).select('+authorId'); if (!post) throw httpError('Published post not found', 404); applyPostReaction(post, req.user.id, value); await post.save(); scheduleCommunityTrendingRecompute(req.params.communityId); return res.json({post: safeContent(post, {viewerId: req.user.id})}); } catch (err) { return sendError(res, err); } });
+  router.post('/:contentId/like', auth, async (req, res) => { try { await context(req, {participate: true}); const post = await Content.findOne({_id: req.params.contentId, communityId: req.params.communityId, state: 'published'}).select('+authorId'); if (!post) throw httpError('Published post not found', 404); applyPostEngagement(post, req.user.id, 'like'); await post.save(); return res.json({post: safeContent(post, {viewerId: req.user.id})}); } catch (err) { return sendError(res, err); } });
+  router.post('/:contentId/dislike', auth, async (req, res) => { try { await context(req, {participate: true}); const post = await Content.findOne({_id: req.params.contentId, communityId: req.params.communityId, state: 'published'}).select('+authorId'); if (!post) throw httpError('Published post not found', 404); applyPostEngagement(post, req.user.id, 'dislike'); await post.save(); return res.json({post: safeContent(post, {viewerId: req.user.id})}); } catch (err) { return sendError(res, err); } });
   router.post('/:contentId/comments', auth, async (req, res) => { try { await context(req, {participate: true}); const text = validateCommentText(req.body?.text); const post = await Content.findOne({_id: req.params.contentId, communityId: req.params.communityId, state: 'published'}).select('+authorId'); if (!post) throw httpError('Published post not found', 404); const alias = resolvePostCommentAlias(post, req.user.id, req.body?.alias); upsertCommentIdentity(post, req.user.id, alias); post.comments.push({authorId: req.user.id, alias, text}); await post.save(); scheduleCommunityTrendingRecompute(req.params.communityId); return res.status(201).json({post: safeContent(post, {viewerId: req.user.id})}); } catch (err) { return sendError(res, err); } });
   router.get('/:contentId/comments', auth, async (req, res) => {
     try {
