@@ -122,6 +122,19 @@ module.exports = {
   revokeInvite,
   leaveCommunity,
   setCommunityNotificationMute,
+  async getCommunityReadCursor({userId, communityId}) {
+    return readCursors.get(`${userId}:${communityId}`) || null;
+  },
+  async updateCommunityReadCursor({userId, communityId, lastReadPostAt, lastReadPostId}) {
+    const key = `${userId}:${communityId}`;
+    const current = readCursors.get(key);
+    if (!current || new Date(lastReadPostAt) >= new Date(current.lastReadPostAt)) {
+      const next = {userId: String(userId), communityId: String(communityId), lastReadPostAt: new Date(lastReadPostAt).toISOString(), lastReadPostId: String(lastReadPostId || ''), updatedAt: new Date().toISOString()};
+      readCursors.set(key, next);
+      return next;
+    }
+    return current;
+  },
   updateMembershipRole,
   recoverOwnership,
   audit,
@@ -130,3 +143,4 @@ module.exports = {
   listPendingOwnershipTransfers,
   acceptOwnershipTransfer,
 };
+const readCursors = new Map();

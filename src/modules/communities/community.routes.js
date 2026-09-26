@@ -7,6 +7,7 @@ const {communityForDiscovery, communityForViewer, canManageCommunity} = require(
 const {scheduleCommunityTrendingRecompute} = require('./community-trending');
 const {normalizeJoinRequestIdentity} = require('./community-join-request.service');
 const {normalizeQueueSchedule} = require('./community-publication.service');
+const {notifyUser} = require('../notifications/notification.service');
 
 function sendError(res, err) {
   const status = err.statusCode || 500;
@@ -126,6 +127,27 @@ router.get('/:communityId', auth, async (req, res) => {
   }
 });
 
+router.post('/:communityId/read', auth, async (req, res) => {
+  try {
+    const membership = await communityRepository.getMembership(req.user.id, req.params.communityId);
+    if (membership?.status !== 'active') return res.status(403).json({error: 'Join this community to track unread posts'});
+    const postId = String(req.body?.postId || '').trim();
+    const postCreatedAt = req.body?.postCreatedAt;
+    if (!postId || !postCreatedAt || Number.isNaN(new Date(postCreatedAt).getTime())) {
+      return res.status(400).json({error: 'postId and postCreatedAt are required'});
+    }
+    const cursor = await communityRepository.updateCommunityReadCursor({
+      userId: req.user.id,
+      communityId: req.params.communityId,
+      lastReadPostAt: postCreatedAt,
+      lastReadPostId: postId,
+    });
+    return res.json({cursor});
+  } catch (err) {
+    return sendError(res, err);
+  }
+});
+
 router.put('/:communityId', auth, async (req, res) => {
   const input = req.body || {};
   if (!['public', 'members'].includes(input.contentVisibility || 'public') || !['open', 'approval', 'invite-only'].includes(input.joinMode || 'open') || !['manual', 'scheduled'].includes(input.queueMode || 'manual')) return res.status(400).json({error: 'Invalid community settings'});
@@ -172,6 +194,8 @@ router.post('/:communityId/join', auth, async (req, res) => {
         revealedUsername: identity.revealedUsername,
         note: req.body?.note || '',
       });
+      const managers = (await communityRepository.listMembers(req.params.communityId)).filter(member => ['owner', 'moderator'].includes(member.role));
+      await Promise.all(managers.filter(member => String(member.userId) !== String(req.user.id)).map(member => notifyUser({userId: member.userId, type: 'community_join_request', content: 'A new request to join your community', metadata: {communityId: String(req.params.communityId), requestId: String(request.id), target: 'join_requests'}})));
       return res.status(202).json({request, joinRequest: request, membership: null});
     }
     if (community.joinMode === 'invite-only') return res.status(403).json({error: 'An invite link is required'});
@@ -230,6 +254,7 @@ router.put('/:communityId/join-requests/:requestId', auth, async (req, res) => {
     const request = await communityRepository.reviewJoinRequest({requestId: req.params.requestId, reviewerId: req.user.id, decision});
     if (!request || String(request.communityId) !== String(req.params.communityId)) return res.status(404).json({error: 'Pending join request not found'});
     await communityRepository.audit({communityId: req.params.communityId, actorId: req.user.id, action: `join_request_${decision}`, targetType: 'join_request', targetId: req.params.requestId});
+    await notifyUser({userId: request.userId, type: `community_join_${decision}`, content: decision === 'approved' ? 'Your community join request was accepted' : 'Your community join request was declined', metadata: {communityId: String(req.params.communityId), requestId: String(req.params.requestId), target: 'community'}});
     if (decision === 'approved') scheduleCommunityTrendingRecompute(req.params.communityId);
     return res.json({request});
   } catch { return res.status(500).json({error: 'Failed to review join request'}); }

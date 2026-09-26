@@ -120,6 +120,12 @@ function createCommunityRepository({
     setCommunityNotificationMute(input) {
       return activeRepository().setCommunityNotificationMute(input);
     },
+    getCommunityReadCursor(input) {
+      return activeRepository().getCommunityReadCursor(input);
+    },
+    updateCommunityReadCursor(input) {
+      return activeRepository().updateCommunityReadCursor(input);
+    },
     updateMembershipRole(input) {
       return activeRepository().updateMembershipRole(input);
     },

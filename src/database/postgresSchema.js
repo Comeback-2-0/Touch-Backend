@@ -103,6 +103,18 @@ async function ensurePostgresSchema(sql = getPostgresClient()) {
   `;
 
   await sql`
+    create table if not exists community_read_cursors (
+      user_id text not null references users(id) on delete cascade,
+      community_id text not null references communities(id) on delete cascade,
+      last_read_post_at timestamptz,
+      last_read_post_id text,
+      updated_at timestamptz not null default now(),
+      primary key (user_id, community_id)
+    )
+  `;
+  await sql`create index if not exists idx_community_read_cursors_user on community_read_cursors(user_id, updated_at desc)`;
+
+  await sql`
     create table if not exists community_invite_links (
       id text primary key,
       community_id text not null references communities(id) on delete cascade,
@@ -154,6 +166,21 @@ async function ensurePostgresSchema(sql = getPostgresClient()) {
       updated_at timestamptz not null default now()
     )
   `;
+
+  await sql`
+    create table if not exists notification_devices (
+      id text primary key,
+      user_id text not null references users(id) on delete cascade,
+      token text not null unique,
+      platform text not null default 'unknown',
+      app_version text not null default '',
+      last_seen_at timestamptz not null default now(),
+      revoked_at timestamptz,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )
+  `;
+  await sql`create index if not exists idx_notification_devices_user_active on notification_devices(user_id, revoked_at, last_seen_at desc)`;
 
   await sql`
     create table if not exists reports (

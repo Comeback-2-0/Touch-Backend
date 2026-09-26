@@ -374,6 +374,28 @@ function createPostgresCommunityRepository(sql = getPostgresClient()) {
       const row = rows[0];
       return row ? {userId: row.user_id, communityId: row.community_id, muted: Boolean(row.muted)} : null;
     },
+    async getCommunityReadCursor({userId, communityId}) {
+      const rows = await sql`
+        select user_id, community_id, last_read_post_at, last_read_post_id, updated_at
+        from community_read_cursors
+        where user_id = ${String(userId)} and community_id = ${String(communityId)}
+      `;
+      const row = rows[0];
+      return row ? {userId: row.user_id, communityId: row.community_id, lastReadPostAt: toIso(row.last_read_post_at), lastReadPostId: row.last_read_post_id, updatedAt: toIso(row.updated_at)} : null;
+    },
+    async updateCommunityReadCursor({userId, communityId, lastReadPostAt, lastReadPostId}) {
+      const rows = await sql`
+        insert into community_read_cursors (user_id, community_id, last_read_post_at, last_read_post_id)
+        values (${String(userId)}, ${String(communityId)}, ${lastReadPostAt ? new Date(lastReadPostAt) : null}, ${String(lastReadPostId || '')})
+        on conflict (user_id, community_id) do update set
+          last_read_post_at = case when excluded.last_read_post_at >= community_read_cursors.last_read_post_at then excluded.last_read_post_at else community_read_cursors.last_read_post_at end,
+          last_read_post_id = case when excluded.last_read_post_at >= community_read_cursors.last_read_post_at then excluded.last_read_post_id else community_read_cursors.last_read_post_id end,
+          updated_at = now()
+        returning user_id, community_id, last_read_post_at, last_read_post_id, updated_at
+      `;
+      const row = rows[0];
+      return {userId: row.user_id, communityId: row.community_id, lastReadPostAt: toIso(row.last_read_post_at), lastReadPostId: row.last_read_post_id, updatedAt: toIso(row.updated_at)};
+    },
     async updateMembershipRole({userId, communityId, role}) {
       const rows = await sql`
         update community_memberships set role = ${String(role)}, updated_at = now()
