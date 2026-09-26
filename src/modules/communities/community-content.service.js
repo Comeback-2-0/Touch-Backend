@@ -99,17 +99,37 @@ function takenAliasKeys(post, {exceptUserId} = {}) {
   return taken;
 }
 
+const ANONYMOUS_ALIAS_ADJECTIVES = [
+  'Quiet', 'Kind', 'Brave', 'Gentle', 'Calm', 'Bright', 'Hidden', 'Mellow',
+  'Curious', 'Silver', 'Warm', 'Clever', 'Soft', 'Steady', 'Lucky', 'Blue',
+];
+const ANONYMOUS_ALIAS_NOUNS = [
+  'Owl', 'Fox', 'Moth', 'Kite', 'Fern', 'Wave', 'Ember', 'Moss',
+  'Lantern', 'Rain', 'Robin', 'Panda', 'Comet', 'Willow', 'Pebble', 'Dawn',
+];
+
 function suggestPostCommentAlias(post, userId) {
   const taken = takenAliasKeys(post, {exceptUserId: userId});
   const seed = crypto
     .createHash('sha256')
     .update(`${String(post?._id || post?.id || post?.alias || '')}:${String(userId || '')}`)
     .digest('hex');
-  let alias = userId ? `anon-${seed.slice(0, 6)}` : newAnonymousAlias();
-  let extra = 6;
-  while (taken.has(normalizeAliasKey(alias)) && extra < 14) {
-    extra += 1;
-    alias = userId ? `anon-${seed.slice(0, extra)}` : newAnonymousAlias();
+  const numberFromSeed = (start, end) => parseInt(seed.slice(start, end), 16);
+  let attempt = 0;
+  let alias = '';
+  while (!alias || taken.has(normalizeAliasKey(alias))) {
+    const adjective = ANONYMOUS_ALIAS_ADJECTIVES[
+      (numberFromSeed(0, 8) + attempt * 7) % ANONYMOUS_ALIAS_ADJECTIVES.length
+    ];
+    const noun = ANONYMOUS_ALIAS_NOUNS[
+      (numberFromSeed(8, 16) + attempt * 11) % ANONYMOUS_ALIAS_NOUNS.length
+    ];
+    alias = `${adjective} ${noun}`;
+    attempt += 1;
+    if (attempt > ANONYMOUS_ALIAS_ADJECTIVES.length * ANONYMOUS_ALIAS_NOUNS.length) {
+      alias = `${adjective} ${noun} ${attempt}`;
+      break;
+    }
   }
   return alias;
 }
