@@ -93,7 +93,7 @@ router.post('/', auth, async (req, res) => {
   const {name, description = '', image = '', rules = '', contentVisibility = 'public', joinMode = 'open', showLeadership = false, queueMode = 'manual', queueScheduleMinutes = null, queueSchedule = null} = req.body || {};
   if (!String(name).trim()) return res.status(400).json({error: 'Community name is required'});
   if (!['public', 'members'].includes(contentVisibility)) return res.status(400).json({error: 'Invalid content visibility'});
-  if (!['open', 'approval', 'invite-only'].includes(joinMode)) return res.status(400).json({error: 'Invalid join mode'});
+  if (!['open', 'approval'].includes(joinMode)) return res.status(400).json({error: 'Invalid join mode'});
   if (!['manual', 'scheduled'].includes(queueMode)) return res.status(400).json({error: 'Invalid queue mode'});
   try {
     const queueSettings = buildQueueSettings({queueMode, queueScheduleMinutes, queueSchedule});
