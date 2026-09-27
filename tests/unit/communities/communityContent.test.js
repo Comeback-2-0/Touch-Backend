@@ -11,6 +11,7 @@ const {
   applyPostEngagement,
   countThreadComments,
   resolvePostCommentAlias,
+  suggestAnonymousAlias,
   sortCommentsByTime,
   sortCommentsLikeLegacy,
   sortRepliesOldestFirst,
@@ -18,6 +19,12 @@ const {
   resetQueueVotes,
   MAX_COMMENT_TEXT,
 } = require('../../../src/modules/communities/community-content.service');
+
+test('suggests a human-friendly unique alias for a community post', () => {
+  const alias = suggestAnonymousAlias({scope: 'community-1', userId: 'user-1', takenAliases: ['Quiet Owl']});
+  assert.match(alias, /^[A-Z][a-z]+ [A-Z][a-z]+(?: \d+)?$/);
+  assert.notEqual(alias.toLowerCase(), 'quiet owl');
+});
 
 test('allows text with one image attachment', () => {
   assert.doesNotThrow(() => validateCommunityContent({

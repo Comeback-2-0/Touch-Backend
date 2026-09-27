@@ -134,6 +134,21 @@ function suggestPostCommentAlias(post, userId) {
   return alias;
 }
 
+function suggestAnonymousAlias({scope = '', userId = '', takenAliases = []} = {}) {
+  const taken = new Set(takenAliases.map(normalizeAliasKey));
+  const seed = crypto.createHash('sha256').update(`${String(scope)}:${String(userId)}`).digest('hex');
+  const pick = (start, values) => values[parseInt(seed.slice(start, start + 8), 16) % values.length];
+  const startAdjective = ANONYMOUS_ALIAS_ADJECTIVES.indexOf(pick(0, ANONYMOUS_ALIAS_ADJECTIVES));
+  const startNoun = ANONYMOUS_ALIAS_NOUNS.indexOf(pick(8, ANONYMOUS_ALIAS_NOUNS));
+  for (let attempt = 0; attempt < ANONYMOUS_ALIAS_ADJECTIVES.length * ANONYMOUS_ALIAS_NOUNS.length; attempt += 1) {
+    const adjective = ANONYMOUS_ALIAS_ADJECTIVES[(startAdjective + attempt) % ANONYMOUS_ALIAS_ADJECTIVES.length];
+    const noun = ANONYMOUS_ALIAS_NOUNS[(startNoun + attempt * 3) % ANONYMOUS_ALIAS_NOUNS.length];
+    const alias = `${adjective} ${noun}`;
+    if (!taken.has(normalizeAliasKey(alias))) return alias;
+  }
+  return `${ANONYMOUS_ALIAS_ADJECTIVES[startAdjective]} ${ANONYMOUS_ALIAS_NOUNS[startNoun]} ${Date.now() % 1000}`;
+}
+
 function resolvePostCommentAlias(post, userId, requested) {
   const existing = findViewerAlias(post, userId);
   const requestedAlias = String(requested || '').trim() ? normalizeCommentAlias(requested) : '';
@@ -417,6 +432,7 @@ module.exports = {
   sortCommentsLikeLegacy,
   sortRepliesOldestFirst,
   suggestPostCommentAlias,
+  suggestAnonymousAlias,
   upsertCommentIdentity,
   validateCommentText,
   validateCommunityContent,

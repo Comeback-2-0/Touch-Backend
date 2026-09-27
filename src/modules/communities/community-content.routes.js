@@ -7,7 +7,7 @@ const {notifyUser} = require('../notifications/notification.service');
 const {canManageCommunity, canParticipate, canViewCommunityContent} = require('./community-access');
 const {
   httpError,
-  newAnonymousAlias,
+  suggestAnonymousAlias,
   validateCommunityContent,
   validateUploadedCommunityMedia,
   applyQueueVote,
@@ -245,10 +245,17 @@ function createCommunityContentRoutes({repository = communityRepository, Content
           }
         : null;
       const customAlias = normalizeCommentAlias(req.body?.alias || '');
+      const usedAliases = customAlias
+        ? []
+        : (await Content.find({communityId: req.params.communityId}).select({alias: 1}).lean()).map(item => item.alias);
       const post = await Content.create({
         communityId: req.params.communityId,
         authorId: req.user.id,
-        alias: customAlias || newAnonymousAlias(),
+        alias: customAlias || suggestAnonymousAlias({
+          scope: req.params.communityId,
+          userId: req.user.id,
+          takenAliases: usedAliases,
+        }),
         text: String(req.body?.text || ''),
         link: '',
         media,
