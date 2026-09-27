@@ -15,6 +15,28 @@ function configureSocketServer(httpServer) {
       socket.join(communityId);
     });
 
+    const commentRoom = ({ communityId, contentId, commentId }) =>
+      `community:${String(communityId)}:post:${String(contentId)}:comment:${String(commentId)}`;
+
+    socket.on("joinCommunityPostThread", (payload = {}) => {
+      if (!payload.communityId || !payload.contentId || !payload.commentId) return;
+      socket.join(commentRoom(payload));
+    });
+
+    socket.on("leaveCommunityPostThread", (payload = {}) => {
+      if (!payload.communityId || !payload.contentId || !payload.commentId) return;
+      socket.leave(commentRoom(payload));
+    });
+
+    socket.on("communityReplyTyping", (payload = {}) => {
+      if (!payload.communityId || !payload.contentId || !payload.commentId) return;
+      socket.to(commentRoom(payload)).emit("communityReplyTyping", {
+        contentId: String(payload.contentId),
+        commentId: String(payload.commentId),
+        isTyping: Boolean(payload.isTyping),
+      });
+    });
+
     socket.on(
       "sendMessage",
       ({ communityId, content, senderAnonymousId }) => {
