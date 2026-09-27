@@ -4,3 +4,5 @@
 /uploads
 structure.txt
 /public
+
+touch-firebase-service-account.json
