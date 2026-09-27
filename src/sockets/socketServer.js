@@ -1,12 +1,15 @@
 const { Server } = require("socket.io");
+const {configureSocketRedis} = require('./socketRedisAdapter');
 
-function configureSocketServer(httpServer) {
+async function configureSocketServer(httpServer, options = {}) {
   const io = new Server(httpServer, {
     cors: {
       origin: "*",
       methods: ["GET", "POST"],
     },
   });
+
+  await configureSocketRedis(io, options);
 
   io.on("connection", (socket) => {
     console.log("New user connected");

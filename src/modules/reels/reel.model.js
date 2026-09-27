@@ -16,6 +16,7 @@ const userSchema = new mongoose.Schema({
 
 const reelSchema = new mongoose.Schema({
   videoPath: String,
+  videoPublicId: String,
   mood: [String],
   hashtags: [String],
   creatorId: String,

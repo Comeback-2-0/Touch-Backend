@@ -36,6 +36,16 @@ function uploadCommunityBuffer(file, folder) {
   });
 }
 
+function uploadVideoBuffer(file, options = {}) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {folder: options.folder, resource_type: 'video'},
+      (error, result) => error ? reject(error) : resolve(result),
+    );
+    stream.end(file.buffer);
+  });
+}
+
 async function uploadCommunityMedia(file) {
   const result = await uploadCommunityBuffer(file, process.env.CLOUDINARY_COMMUNITY_FOLDER || 'touch/community');
   return {url: result.secure_url, publicId: result.public_id, duration: Number(result.duration || 0)};
@@ -92,6 +102,10 @@ module.exports = {
   uploadPostImage,
   uploadCommunityImage,
   uploadCommunityMedia,
+  uploadVideoBuffer: async (file, options = {}) => {
+    const result = await uploadVideoBuffer(file, options);
+    return {url: result.secure_url, publicId: result.public_id};
+  },
   deleteCommunityMedia,
   deleteProfileImage,
 };

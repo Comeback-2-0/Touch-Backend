@@ -19,7 +19,7 @@ const PORT = process.env.PORT || 3333;
     // Start the HTTP server.
     const httpServer = http.createServer(app);
 
-    configureSocketServer(httpServer);
+    await configureSocketServer(httpServer);
 
     httpServer.listen(PORT, () =>
       console.log(`Server with socket.io running on port ${PORT}`)

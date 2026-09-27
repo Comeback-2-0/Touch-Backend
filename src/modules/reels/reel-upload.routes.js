@@ -1,30 +1,14 @@
  // routes/reelUploadRoutes.js
 const express = require('express');
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const { v4: uuidv4 } = require('uuid');
 const Reel = require('./reel.model');
 const reelController = require('./reel.controller');
 const auth = require('../../middleware/auth');
+const {createReelStorage} = require('./reel-storage');
 const router = express.Router();
 
-// Storage config (video saved locally)
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadDir = path.join(__dirname, '..', '..', '..', 'uploads', 'reels');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir);
-    }
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    const ext = path.extname(file.originalname);
-    cb(null, uuidv4() + ext);
-  },
-});
-
-const upload = multer({ storage });
+const upload = multer({storage: multer.memoryStorage()});
+const reelStorage = createReelStorage();
 
 // @route   POST /api/reels/upload
 // @desc    Upload a new reel
@@ -40,8 +24,10 @@ router.post('/upload', auth, upload.single('video'), async (req, res) => {
       return res.status(400).json({ error: 'Caption, mood, and creatorId are required.' });
     }
 
+    const media = await reelStorage.upload(req.file);
     const newReel = new Reel({
-      videoPath: `/uploads/reels/${req.file.filename}`,
+      videoPath: media.url,
+      videoPublicId: media.publicId,
       mood: mood.split(',').map((m) => m.trim()), // assumes mood is sent as CSV string
       caption,
       creatorId,
