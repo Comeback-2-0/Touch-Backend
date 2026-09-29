@@ -157,6 +157,25 @@ test('a viewer reuses the same alias on a post', () => {
   assert.equal(resolvePostCommentAlias(post, 'user-1'), 'anon-21d6b0');
 });
 
+test('the post owner always uses the post alias for comments and replies', () => {
+  const post = {
+    authorId: 'user-1',
+    alias: 'Quiet Fox',
+    comments: [],
+  };
+  assert.equal(resolvePostCommentAlias(post, 'user-1'), 'Quiet Fox');
+  assert.equal(resolvePostCommentAlias(post, 'user-1', 'Different Name'), 'Quiet Fox');
+});
+
+test('the post owner cannot choose a different alias even after an old comment alias exists', () => {
+  const post = {
+    authorId: 'user-1',
+    alias: 'Quiet Fox',
+    comments: [{authorId: 'user-1', alias: 'Old Name', replies: []}],
+  };
+  assert.equal(resolvePostCommentAlias(post, 'user-1', 'Different Name'), 'Quiet Fox');
+});
+
 test('a custom alias is rejected when another voice on the post already uses it', () => {
   const post = {
     alias: 'anon-post',

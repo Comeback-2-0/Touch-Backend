@@ -150,6 +150,9 @@ function suggestAnonymousAlias({scope = '', userId = '', takenAliases = []} = {}
 }
 
 function resolvePostCommentAlias(post, userId, requested) {
+  if (post?.authorId && String(post.authorId) === String(userId || '')) {
+    return String(post.alias || '');
+  }
   const existing = findViewerAlias(post, userId);
   const requestedAlias = String(requested || '').trim() ? normalizeCommentAlias(requested) : '';
   if (requestedAlias) {

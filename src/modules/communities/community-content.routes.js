@@ -110,7 +110,11 @@ function safeContent(content, {viewerId, commentSort} = {}) {
     downvotes,
     commentsCount: countThreadComments(content.comments || []),
     viewerAlias: viewerId ? resolvePostCommentAlias(content, viewerId) : '',
-    viewerAliasLocked: Boolean(viewerId && findViewerAlias(content, viewerId)),
+    viewerIsPostOwner: Boolean(viewerId && content.authorId && String(content.authorId) === String(viewerId)),
+    viewerAliasLocked: Boolean(viewerId && (
+      (content.authorId && String(content.authorId) === String(viewerId))
+      || findViewerAlias(content, viewerId)
+    )),
     moderation: {
       status: moderation.status || 'none',
       reportsCount: Number(moderation.reportsCount || 0),
@@ -368,7 +372,8 @@ function createCommunityContentRoutes({repository = communityRepository, Content
   router.get('/:contentId', auth, async (req, res) => {
     try {
       await context(req);
-      const post = await Content.findOne({_id: req.params.contentId, communityId: req.params.communityId, state: 'published'});
+      const postQuery = Content.findOne({_id: req.params.contentId, communityId: req.params.communityId, state: 'published'});
+      const post = await (postQuery?.select ? postQuery.select('+authorId') : postQuery);
       if (!post) throw httpError('Post unavailable', 404);
       return res.json({post: safeContent(post, {viewerId: req.user.id, commentSort: req.query?.sort})});
     } catch (err) { return sendError(res, err); }
