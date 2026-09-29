@@ -5,7 +5,7 @@ const {deliverCommunityNotification} = require('./notification-delivery.service'
 
 const repository = createNotificationRepository();
 
-async function notifyUser({userId, type, content, metadata = {}}) {
+async function notifyUser({userId, type, title, content, metadata = {}}) {
   if (!userId) return null;
   const notification = await repository.create({
     userId: String(userId),
@@ -20,7 +20,7 @@ async function notifyUser({userId, type, content, metadata = {}}) {
   } catch {
     // Notification persistence remains authoritative if Redis is unavailable.
   }
-  deliverCommunityNotification({userId: String(userId), type, content, metadata}).catch(() => undefined);
+  deliverCommunityNotification({userId: String(userId), type, title, content, metadata}).catch(() => undefined);
   return notification;
 }
 

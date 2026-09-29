@@ -25,6 +25,7 @@ const {
   normalizeFeedPageSize,
   paginateCommunityFeedRows,
   countThreadComments,
+  findViewerAlias,
   resolvePostCommentAlias,
   upsertCommentIdentity,
   validateCommentText,
@@ -109,6 +110,7 @@ function safeContent(content, {viewerId, commentSort} = {}) {
     downvotes,
     commentsCount: countThreadComments(content.comments || []),
     viewerAlias: viewerId ? resolvePostCommentAlias(content, viewerId) : '',
+    viewerAliasLocked: Boolean(viewerId && findViewerAlias(content, viewerId)),
     moderation: {
       status: moderation.status || 'none',
       reportsCount: Number(moderation.reportsCount || 0),
@@ -126,6 +128,11 @@ function normalizeReportInput(body = {}) {
   const reason = String(body.reason || 'other').trim().slice(0, 80) || 'other';
   const context = String(body.context || '').trim().slice(0, 1000);
   return {reason, context};
+}
+
+function notificationPreview(text, maxWords = 8) {
+  const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+  return words.length <= maxWords ? words.join(' ') : `${words.slice(0, maxWords).join(' ')}...`;
 }
 
 function safeReport(post, report) {
@@ -153,6 +160,25 @@ function createCommunityContentRoutes({repository = communityRepository, Content
     if (participate && !platformAdmin && !canParticipate(membership)) throw httpError('Active membership required', 403);
     if (manage && !platformAdmin && !canManageCommunity(membership)) throw httpError('Moderator permission required', 403);
     return {community, membership};
+  }
+
+  async function notifyMembersAboutPublishedPost({community, post}) {
+    const members = await repository.listMembers(post.communityId);
+    const title = `${post.alias} posted in ${community.name}`;
+    const content = `click to see this latest post of ${community.name}`;
+    await Promise.all(members
+      .filter(member => member.status === 'active' && !member.muted && String(member.userId) !== String(post.authorId))
+      .map(member => notifyUser({
+        userId: member.userId,
+        type: 'community_new_post',
+        title,
+        content,
+        metadata: {
+          communityId: String(post.communityId),
+          contentId: String(post._id),
+          target: 'post',
+        },
+      })));
   }
 
   router.get('/feed', auth, async (req, res) => {
@@ -228,7 +254,7 @@ function createCommunityContentRoutes({repository = communityRepository, Content
     if (err) return sendError(res, httpError('Community media must be 25 MB or smaller', 400));
     let uploaded;
     try {
-      await context(req, {participate: true});
+      const {community} = await context(req, {participate: true});
       validateCommunityContent({text: req.body?.text, files: req.file ? [req.file] : []});
       uploaded = req.file ? await storage.uploadCommunityMedia(req.file) : null;
       if (req.file) validateUploadedCommunityMedia(uploaded, req.file.mimetype);
@@ -260,6 +286,8 @@ function createCommunityContentRoutes({repository = communityRepository, Content
         link: '',
         media,
       });
+      const managers = (await repository.listMembers(req.params.communityId)).filter(member => ['owner', 'moderator'].includes(member.role));
+      await Promise.all(managers.map(member => notifyUser({userId: member.userId, type: 'community_queue_post', title: `New post awaiting review in ${community.name}`, content: `Review the latest post submitted to ${community.name}.`, metadata: {communityId: String(req.params.communityId), contentId: String(post._id), target: 'join_requests'}})));
       scheduleCommunityTrendingRecompute(req.params.communityId);
       return res.status(201).json({post: safeContent(post, {viewerId: req.user.id})});
     } catch (error) {
@@ -271,14 +299,15 @@ function createCommunityContentRoutes({repository = communityRepository, Content
   }));
   router.post('/queue/publish-top', auth, async (req, res) => {
     try {
-      await context(req, {manage: true});
-      const posts = await Content.find({communityId: req.params.communityId, state: 'queued'}).limit(80);
+      const {community} = await context(req, {manage: true});
+      const posts = await Content.find({communityId: req.params.communityId, state: 'queued'}).select('+authorId').limit(80);
       const top = selectEligibleQueuePost(posts);
       if (!top) throw httpError('No posts in the review queue', 404);
       top.state = 'published';
       top.publishedAt = new Date();
       resetQueueVotes(top);
       await top.save();
+      await notifyMembersAboutPublishedPost({community, post: top});
       scheduleCommunityTrendingRecompute(req.params.communityId);
       return res.json({post: safeContent(top, {viewerId: req.user.id})});
     } catch (err) { return sendError(res, err); }
@@ -297,17 +326,18 @@ function createCommunityContentRoutes({repository = communityRepository, Content
   });
   router.post('/:contentId/publish', auth, async (req, res) => {
     try {
-      await context(req, {manage: true});
+      const {community} = await context(req, {manage: true});
       const post = await Content.findOne({
         _id: req.params.contentId,
         communityId: req.params.communityId,
         state: 'queued',
-      });
+      }).select('+authorId');
       if (!post) throw httpError('Queued post not found', 404);
       post.state = 'published';
       post.publishedAt = new Date();
       resetQueueVotes(post);
       await post.save();
+      await notifyMembersAboutPublishedPost({community, post});
       scheduleCommunityTrendingRecompute(req.params.communityId);
       return res.json({post: safeContent(post, {viewerId: req.user.id})});
     } catch (err) {
@@ -346,7 +376,7 @@ function createCommunityContentRoutes({repository = communityRepository, Content
   router.post('/:contentId/react', auth, async (req, res) => { try { await context(req, {participate: true}); const value = String(req.body?.value || 'like'); const post = await Content.findOne({_id: req.params.contentId, communityId: req.params.communityId, state: 'published'}).select('+authorId'); if (!post) throw httpError('Published post not found', 404); applyPostReaction(post, req.user.id, value); await post.save(); scheduleCommunityTrendingRecompute(req.params.communityId); return res.json({post: safeContent(post, {viewerId: req.user.id})}); } catch (err) { return sendError(res, err); } });
   router.post('/:contentId/like', auth, async (req, res) => { try { await context(req, {participate: true}); const post = await Content.findOne({_id: req.params.contentId, communityId: req.params.communityId, state: 'published'}).select('+authorId'); if (!post) throw httpError('Published post not found', 404); applyPostEngagement(post, req.user.id, 'like'); await post.save(); return res.json({post: safeContent(post, {viewerId: req.user.id})}); } catch (err) { return sendError(res, err); } });
   router.post('/:contentId/dislike', auth, async (req, res) => { try { await context(req, {participate: true}); const post = await Content.findOne({_id: req.params.contentId, communityId: req.params.communityId, state: 'published'}).select('+authorId'); if (!post) throw httpError('Published post not found', 404); applyPostEngagement(post, req.user.id, 'dislike'); await post.save(); return res.json({post: safeContent(post, {viewerId: req.user.id})}); } catch (err) { return sendError(res, err); } });
-  router.post('/:contentId/comments', auth, async (req, res) => { try { await context(req, {participate: true}); const text = validateCommentText(req.body?.text); const post = await Content.findOne({_id: req.params.contentId, communityId: req.params.communityId, state: 'published'}).select('+authorId'); if (!post) throw httpError('Published post not found', 404); const alias = resolvePostCommentAlias(post, req.user.id, req.body?.alias); upsertCommentIdentity(post, req.user.id, alias); post.comments.push({authorId: req.user.id, alias, text}); await post.save(); if (post.authorId && String(post.authorId) !== String(req.user.id)) await notifyUser({userId: post.authorId, type: 'community_comment', content: 'New activity on a community post', metadata: {communityId: String(req.params.communityId), contentId: String(req.params.contentId), target: 'post'}}); scheduleCommunityTrendingRecompute(req.params.communityId); return res.status(201).json({post: safeContent(post, {viewerId: req.user.id})}); } catch (err) { return sendError(res, err); } });
+  router.post('/:contentId/comments', auth, async (req, res) => { try { const {community} = await context(req, {participate: true}); const text = validateCommentText(req.body?.text); const post = await Content.findOne({_id: req.params.contentId, communityId: req.params.communityId, state: 'published'}).select('+authorId'); if (!post) throw httpError('Published post not found', 404); const alias = resolvePostCommentAlias(post, req.user.id, req.body?.alias); upsertCommentIdentity(post, req.user.id, alias); post.comments.push({authorId: req.user.id, alias, text}); await post.save(); if (post.authorId && String(post.authorId) !== String(req.user.id)) await notifyUser({userId: post.authorId, type: 'community_comment', title: `${alias} commented on ${post.alias}'s post`, content: notificationPreview(text), metadata: {communityId: String(req.params.communityId), contentId: String(req.params.contentId), target: 'post'}}); const members = await repository.listMembers(req.params.communityId); await Promise.all(members.filter(member => member.status === 'active' && String(member.userId) !== String(req.user.id) && String(member.userId) !== String(post.authorId)).map(member => notifyUser({userId: member.userId, type: 'community_activity_comment', title: `${alias} commented on ${post.alias}'s post`, content: notificationPreview(text), metadata: {communityId: String(req.params.communityId), contentId: String(req.params.contentId), target: 'post'}}))); scheduleCommunityTrendingRecompute(req.params.communityId); return res.status(201).json({post: safeContent(post, {viewerId: req.user.id})}); } catch (err) { return sendError(res, err); } });
   router.get('/:contentId/comments', auth, async (req, res) => {
     try {
       await context(req);
@@ -355,7 +385,7 @@ function createCommunityContentRoutes({repository = communityRepository, Content
       return res.json({comments: sortCommentsForViewer(post.comments || [], req.query?.sort).map(comment => safeComment(comment, req.user.id))});
     } catch (err) { return sendError(res, err); }
   });
-  router.post('/:contentId/comments/:commentId/replies', auth, async (req, res) => { try { await context(req, {participate: true}); const text = validateCommentText(req.body?.text); const post = await Content.findOne({_id: req.params.contentId, communityId: req.params.communityId, state: 'published'}).select('+authorId'); const comment = post?.comments.id(req.params.commentId); if (!comment) throw httpError('Comment not found', 404); const alias = resolvePostCommentAlias(post, req.user.id, req.body?.alias); upsertCommentIdentity(post, req.user.id, alias); comment.replies.push({authorId: req.user.id, alias, text}); await post.save(); if (comment.authorId && String(comment.authorId) !== String(req.user.id)) await notifyUser({userId: comment.authorId, type: 'community_reply', content: 'New reply in a community thread', metadata: {communityId: String(req.params.communityId), contentId: String(req.params.contentId), commentId: String(req.params.commentId), target: 'comment'}}); scheduleCommunityTrendingRecompute(req.params.communityId); return res.status(201).json({post: safeContent(post, {viewerId: req.user.id}), reply: safeReply(comment.replies[comment.replies.length - 1], req.user.id)}); } catch (err) { return sendError(res, err); } });
+  router.post('/:contentId/comments/:commentId/replies', auth, async (req, res) => { try { await context(req, {participate: true}); const text = validateCommentText(req.body?.text); const post = await Content.findOne({_id: req.params.contentId, communityId: req.params.communityId, state: 'published'}).select('+authorId'); const comment = post?.comments.id(req.params.commentId); if (!comment) throw httpError('Comment not found', 404); const alias = resolvePostCommentAlias(post, req.user.id, req.body?.alias); upsertCommentIdentity(post, req.user.id, alias); comment.replies.push({authorId: req.user.id, alias, text}); await post.save(); if (comment.authorId && String(comment.authorId) !== String(req.user.id)) await notifyUser({userId: comment.authorId, type: 'community_reply', title: `${alias} replied to ${comment.alias}'s comment`, content: notificationPreview(text), metadata: {communityId: String(req.params.communityId), contentId: String(req.params.contentId), commentId: String(req.params.commentId), target: 'comment'}}); const members = await repository.listMembers(req.params.communityId); await Promise.all(members.filter(member => member.status === 'active' && String(member.userId) !== String(req.user.id) && String(member.userId) !== String(comment.authorId)).map(member => notifyUser({userId: member.userId, type: 'community_activity_reply', title: `${alias} replied to ${comment.alias}'s comment`, content: notificationPreview(text), metadata: {communityId: String(req.params.communityId), contentId: String(req.params.contentId), commentId: String(req.params.commentId), target: 'comment'}}))); scheduleCommunityTrendingRecompute(req.params.communityId); return res.status(201).json({post: safeContent(post, {viewerId: req.user.id}), reply: safeReply(comment.replies[comment.replies.length - 1], req.user.id)}); } catch (err) { return sendError(res, err); } });
   router.get('/:contentId/comments/:commentId/replies', auth, async (req, res) => {
     try {
       await context(req);

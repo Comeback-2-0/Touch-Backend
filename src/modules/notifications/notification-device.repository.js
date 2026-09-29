@@ -10,24 +10,34 @@ function map(row) {
     appVersion: row.app_version,
     lastSeenAt: row.last_seen_at,
     revokedAt: row.revoked_at,
+    preferences: row.preferences || {newPosts: true, postComments: true, commentReplies: true, joinRequests: true, joinDecisions: true, communityActivity: false, queueReview: true},
   } : null;
 }
 
 function createNotificationDeviceRepository(sql = getPostgresClient()) {
   return {
-    async register({userId, token, platform = 'unknown', appVersion = ''}) {
+    async register({userId, token, platform = 'unknown', appVersion = '', preferences}) {
       const rows = await sql`
-        insert into notification_devices (id, user_id, token, platform, app_version, last_seen_at, revoked_at, updated_at)
-        values (${uuidv4()}, ${String(userId)}, ${String(token)}, ${String(platform)}, ${String(appVersion)}, now(), null, now())
+        insert into notification_devices (id, user_id, token, platform, app_version, preferences, last_seen_at, revoked_at, updated_at)
+        values (${uuidv4()}, ${String(userId)}, ${String(token)}, ${String(platform)}, ${String(appVersion)}, ${sql.json(preferences || {newPosts: true, postComments: true, commentReplies: true, joinRequests: true, joinDecisions: true, communityActivity: false, queueReview: true})}, now(), null, now())
         on conflict (token) do update set
           user_id = excluded.user_id,
           platform = excluded.platform,
           app_version = excluded.app_version,
+          preferences = coalesce(notification_devices.preferences, excluded.preferences),
           last_seen_at = now(),
           revoked_at = null,
           updated_at = now()
         returning *
       `;
+      return map(rows[0]);
+    },
+    async getPreferences({userId, token}) {
+      const rows = await sql`select preferences from notification_devices where user_id = ${String(userId)} and token = ${String(token)} and revoked_at is null limit 1`;
+      return rows[0]?.preferences || null;
+    },
+    async updatePreferences({userId, token, preferences}) {
+      const rows = await sql`update notification_devices set preferences = ${sql.json(preferences)}, updated_at = now() where user_id = ${String(userId)} and token = ${String(token)} and revoked_at is null returning *`;
       return map(rows[0]);
     },
     async revoke({userId, token}) {

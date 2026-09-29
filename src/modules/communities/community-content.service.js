@@ -154,7 +154,12 @@ function resolvePostCommentAlias(post, userId, requested) {
   const requestedAlias = String(requested || '').trim() ? normalizeCommentAlias(requested) : '';
   if (requestedAlias) {
     const key = normalizeAliasKey(requestedAlias);
-    if (existing && normalizeAliasKey(existing) === key) return existing;
+    if (existing) {
+      if (normalizeAliasKey(existing) !== key) {
+        throw httpError('Your alias is locked for this post', 409);
+      }
+      return existing;
+    }
     if (takenAliasKeys(post, {exceptUserId: userId}).has(key)) {
       throw httpError('That name is already used on this post', 409);
     }

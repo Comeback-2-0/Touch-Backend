@@ -146,10 +146,13 @@ function createPostgresCommunityRepository(sql = getPostgresClient()) {
     },
     async listMembers(communityId) {
       const rows = await sql`
-        select user_id, community_id, role, status, joined_at, updated_at
-        from community_memberships
-        where community_id = ${String(communityId)}
-          and status = 'active'
+        select cm.user_id, cm.community_id, cm.role, cm.status, cm.joined_at, cm.updated_at,
+               coalesce(cnp.muted, false) as muted
+        from community_memberships cm
+        left join community_notification_preferences cnp
+          on cnp.user_id = cm.user_id and cnp.community_id = cm.community_id
+        where cm.community_id = ${String(communityId)}
+          and cm.status = 'active'
         order by case role when 'owner' then 0 when 'moderator' then 1 else 2 end, joined_at asc
         limit 200
       `;
@@ -158,6 +161,7 @@ function createPostgresCommunityRepository(sql = getPostgresClient()) {
         communityId: row.community_id,
         role: row.role,
         status: row.status,
+        muted: Boolean(row.muted),
         joinedAt: toIso(row.joined_at),
         updatedAt: toIso(row.updated_at),
       }));

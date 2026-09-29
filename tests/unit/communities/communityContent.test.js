@@ -165,13 +165,13 @@ test('a custom alias is rejected when another voice on the post already uses it'
   assert.throws(() => resolvePostCommentAlias(post, 'user-1', 'sky'), /already used/i);
 });
 
-test('a viewer may keep or rename their own alias even if it already appears on their comments', () => {
+test('a viewer may keep but cannot rename their locked alias on a post', () => {
   const post = {
     alias: 'anon-post',
     comments: [{authorId: 'user-1', alias: 'Sky', replies: []}],
   };
   assert.equal(resolvePostCommentAlias(post, 'user-1', 'Sky'), 'Sky');
-  assert.equal(resolvePostCommentAlias(post, 'user-1', 'River'), 'River');
+  assert.throws(() => resolvePostCommentAlias(post, 'user-1', 'River'), /locked/i);
 });
 
 test('tapping the same post reaction again clears it', () => {

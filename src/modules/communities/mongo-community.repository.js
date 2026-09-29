@@ -42,6 +42,7 @@ async function listMembers(communityId) {
     communityId: String(communityId),
     role: index === 0 ? 'owner' : 'member',
     status: 'active',
+    muted: false,
   }));
 }
 

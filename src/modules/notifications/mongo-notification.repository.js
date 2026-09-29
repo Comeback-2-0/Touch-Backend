@@ -5,6 +5,9 @@ function createNotificationRepository(model = Notification) {
     create(input) {
       return model.create(input);
     },
+    countUnreadForUser(userId) {
+      return model.countDocuments({userId: String(userId), seen: false});
+    },
     listForUser(userId, { limit = 50, cursor } = {}) {
       const query = { userId: String(userId) };
       if (cursor) {

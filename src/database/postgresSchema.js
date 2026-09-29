@@ -180,6 +180,7 @@ async function ensurePostgresSchema(sql = getPostgresClient()) {
       updated_at timestamptz not null default now()
     )
   `;
+  await sql`alter table notification_devices add column if not exists preferences jsonb not null default '{"newPosts": true, "postComments": true, "commentReplies": true, "joinRequests": true, "joinDecisions": true, "communityActivity": false, "queueReview": true}'::jsonb`;
   await sql`create index if not exists idx_notification_devices_user_active on notification_devices(user_id, revoked_at, last_seen_at desc)`;
 
   await sql`

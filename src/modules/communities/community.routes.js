@@ -262,8 +262,20 @@ router.put('/:communityId/join-requests/:requestId', auth, async (req, res) => {
     if (!canManageOrAdmin(req, actor)) return res.status(403).json({error: 'Moderator permission required'});
     const request = await communityRepository.reviewJoinRequest({requestId: req.params.requestId, reviewerId: req.user.id, decision});
     if (!request || String(request.communityId) !== String(req.params.communityId)) return res.status(404).json({error: 'Pending join request not found'});
+    const community = await communityRepository.findById(req.params.communityId);
     await communityRepository.audit({communityId: req.params.communityId, actorId: req.user.id, action: `join_request_${decision}`, targetType: 'join_request', targetId: req.params.requestId});
-    await notifyUser({userId: request.userId, type: `community_join_${decision}`, content: decision === 'approved' ? 'Your community join request was accepted' : 'Your community join request was declined', metadata: {communityId: String(req.params.communityId), requestId: String(req.params.requestId), target: 'community'}});
+    await notifyUser({
+      userId: request.userId,
+      type: `community_join_${decision}`,
+      ...(decision === 'approved' ? {
+        title: `${community?.name || 'Community'}: Join Request Accepted`,
+        content: `see the latest happenings of ${community?.name || 'the community'}.`,
+      } : {
+        title: `${community?.name || 'Community'}: Join Request Declined`,
+        content: `your request to join ${community?.name || 'the community'} was declined.`,
+      }),
+      metadata: {communityId: String(req.params.communityId), requestId: String(req.params.requestId), target: 'community'},
+    });
     if (decision === 'approved') scheduleCommunityTrendingRecompute(req.params.communityId);
     return res.json({request});
   } catch { return res.status(500).json({error: 'Failed to review join request'}); }
