@@ -9,7 +9,7 @@ function asNumber(value) {
 
 /**
  * Pure scoring from recent activity windows.
- * Weights favor the queue→vote→publish loop and penalize reports.
+ * Weights favor the queue→vote→publish loop. Reports do not change the score.
  */
 function computeTrendingScore(stats = {}, {now = new Date(), createdAt} = {}) {
   const publishes = asNumber(stats.publishes);
@@ -18,7 +18,6 @@ function computeTrendingScore(stats = {}, {now = new Date(), createdAt} = {}) {
   const comments = asNumber(stats.comments);
   const reactions = asNumber(stats.reactions);
   const joins = asNumber(stats.joins);
-  const reports = asNumber(stats.reports);
 
   let score =
     publishes * 5 +
@@ -26,8 +25,7 @@ function computeTrendingScore(stats = {}, {now = new Date(), createdAt} = {}) {
     queueVoteEnergy * 3 +
     comments * 2 +
     reactions * 1 +
-    joins * 4 -
-    reports * 8;
+    joins * 4;
 
   const created = createdAt ? new Date(createdAt).getTime() : 0;
   const ageHours = created ? (now.getTime() - created) / (1000 * 60 * 60) : 9999;

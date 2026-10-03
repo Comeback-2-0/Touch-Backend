@@ -26,12 +26,12 @@ test('scores queue votes and publishes higher than soft signals', () => {
   assert.equal(score, 41);
 });
 
-test('reports heavily penalize the score and floor at zero', () => {
+test('reports do not change the trending score', () => {
   const score = computeTrendingScore(
     {publishes: 1, queueSubmissions: 0, queueVoteEnergy: 0, comments: 0, reactions: 0, joins: 0, reports: 3},
     {now, createdAt: '2026-01-01T00:00:00.000Z'},
   );
-  assert.equal(score, 0);
+  assert.equal(score, 5);
 });
 
 test('deriveTrendingReason prefers the strongest live signal', () => {
