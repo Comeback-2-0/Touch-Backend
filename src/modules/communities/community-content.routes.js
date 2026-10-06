@@ -369,6 +369,32 @@ function createCommunityContentRoutes({repository = communityRepository, Content
       return sendError(res, err);
     }
   });
+  router.get('/:contentId/share-metadata', async (req, res) => {
+    try {
+      const community = await repository.findById(req.params.communityId);
+      if (!community || community.contentVisibility === 'members') throw httpError('Post unavailable', 404);
+      const post = await Content.findOne({
+        _id: req.params.contentId,
+        communityId: req.params.communityId,
+        state: 'published',
+      });
+      if (!post) throw httpError('Post unavailable', 404);
+      return res.json({
+        community: {
+          name: community.name,
+          contentVisibility: community.contentVisibility || 'public',
+        },
+        post: {
+          alias: post.alias,
+          text: post.text,
+          media: post.media?.type === 'image' ? post.media : null,
+        },
+      });
+    } catch (err) {
+      return sendError(res, err);
+    }
+  });
+
   router.get('/:contentId', auth, async (req, res) => {
     try {
       await context(req);

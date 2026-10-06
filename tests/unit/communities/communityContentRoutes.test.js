@@ -87,6 +87,37 @@ test('direct content lookup returns the selected published post without scanning
   });
 });
 
+test('public share metadata exposes only published public posts', async () => {
+  const createRoutes = loadRoutesWithAuthStub();
+  const app = express();
+  app.use('/communities/:communityId/content', createRoutes({
+    repository: {
+      findById: async () => ({id: 'community-1', name: 'Public Circle', contentVisibility: 'public'}),
+    },
+    Content: {
+      findOne: query => {
+        assert.deepEqual(query, {_id: 'post-1', communityId: 'community-1', state: 'published'});
+        return Promise.resolve({
+          _id: 'post-1',
+          communityId: 'community-1',
+          alias: 'Kind Lantern',
+          text: 'A public post',
+          media: {type: 'image', url: 'https://cdn.example/post.jpg', mimeType: 'image/jpeg'},
+          state: 'published',
+        });
+      },
+    },
+  }));
+
+  const response = await request(app, '/communities/community-1/content/post-1/share-metadata');
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body, {
+    community: {name: 'Public Circle', contentVisibility: 'public'},
+    post: {alias: 'Kind Lantern', text: 'A public post', media: {type: 'image', url: 'https://cdn.example/post.jpg', mimeType: 'image/jpeg'}},
+  });
+});
+
 test('post reports store reason and context without exposing reporter ids in post responses', async () => {
   const createRoutes = loadRoutesWithAuthStub();
   const post = {
