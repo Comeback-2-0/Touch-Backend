@@ -372,13 +372,14 @@ function createCommunityContentRoutes({repository = communityRepository, Content
   router.get('/:contentId/share-metadata', async (req, res) => {
     try {
       const community = await repository.findById(req.params.communityId);
-      if (!community || community.contentVisibility === 'members') throw httpError('Post unavailable', 404);
+      if (!community) throw httpError('Post unavailable', 404);
       const post = await Content.findOne({
         _id: req.params.contentId,
         communityId: req.params.communityId,
         state: 'published',
       });
       if (!post) throw httpError('Post unavailable', 404);
+      const membersOnly = community.contentVisibility === 'members';
       return res.json({
         community: {
           name: community.name,
@@ -386,8 +387,8 @@ function createCommunityContentRoutes({repository = communityRepository, Content
         },
         post: {
           alias: post.alias,
-          text: post.text,
-          media: post.media?.type === 'image' ? post.media : null,
+          text: membersOnly ? '' : post.text,
+          media: !membersOnly && post.media?.type === 'image' ? post.media : null,
         },
       });
     } catch (err) {

@@ -118,6 +118,37 @@ test('public share metadata exposes only published public posts', async () => {
   });
 });
 
+test('members-only share metadata confirms the post without exposing its content', async () => {
+  const createRoutes = loadRoutesWithAuthStub();
+  const app = express();
+  app.use('/communities/:communityId/content', createRoutes({
+    repository: {
+      findById: async () => ({id: 'community-1', name: 'Private Circle', contentVisibility: 'members'}),
+    },
+    Content: {
+      findOne: query => {
+        assert.deepEqual(query, {_id: 'post-1', communityId: 'community-1', state: 'published'});
+        return Promise.resolve({
+          _id: 'post-1',
+          communityId: 'community-1',
+          alias: 'Kind Lantern',
+          text: 'Members must be the only people who can read this',
+          media: {type: 'image', url: 'https://cdn.example/private.jpg', mimeType: 'image/jpeg'},
+          state: 'published',
+        });
+      },
+    },
+  }));
+
+  const response = await request(app, '/communities/community-1/content/post-1/share-metadata');
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body, {
+    community: {name: 'Private Circle', contentVisibility: 'members'},
+    post: {alias: 'Kind Lantern', text: '', media: null},
+  });
+});
+
 test('post reports store reason and context without exposing reporter ids in post responses', async () => {
   const createRoutes = loadRoutesWithAuthStub();
   const post = {
