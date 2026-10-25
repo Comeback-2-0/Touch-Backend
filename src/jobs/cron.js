@@ -37,3 +37,13 @@ cron.schedule('0 0 * * *', async () => {
     }
   }
 });
+
+// Retrying is independent of request delivery: failed mail never loses a saved request.
+let retryingDeletionEmails=false;
+cron.schedule('*/5 * * * *',async()=>{
+ if(retryingDeletionEmails)return;
+ retryingDeletionEmails=true;
+ try{await require('../modules/users/account-deletion.service').createAccountDeletionService().retryNotifications();}
+ catch{console.error('[CRON] Deletion email retry failed');}
+ finally{retryingDeletionEmails=false;}
+});

@@ -62,7 +62,18 @@ async function sendFeatureRequestEmails(payload, transport = resend) {
   return results;
 }
 
+async function sendAccountDeletionAdminEmail(payload) {
+  const lines = [
+    `Account ID: ${payload.userId}`, `Name: ${payload.name || ''}`, `Email: ${payload.email || ''}`,
+    `Requested: ${payload.requestedAt}`, `Delete by: ${payload.dueAt} (14 working days; Monday-Friday, Asia/Kolkata)`,
+    `Reason: ${payload.reason || 'Skipped'}`, `Details: ${payload.details || 'Skipped'}`,
+    'Manual action required: delete the account and associated personal data/content, revoke provider credentials where applicable, and confirm completion to the user.',
+  ];
+  return resend.sendEmail({from:'Touch Support <support-touch@dophera.tech>', to:adminFeedbackRecipient(), subject:`Touch account deletion request: ${payload.userId}`, text:lines.join('\n')});
+}
+
 module.exports = {
+  sendAccountDeletionAdminEmail,
   sendWelcomeEmail,
   sendProfileCompletedEmail,
   sendBugReportEmails,

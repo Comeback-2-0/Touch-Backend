@@ -29,6 +29,7 @@ function createResendEmailService({
 
     const response = await fetchImpl(RESEND_EMAILS_URL, {
       method: 'POST',
+      signal: AbortSignal.timeout(10000),
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',

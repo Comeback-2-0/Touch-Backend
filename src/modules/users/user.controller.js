@@ -4,6 +4,13 @@ function sendError(res, err) {
   return res.status(err.statusCode || 500).json({ error: err.message || 'Internal server error' });
 }
 
+exports.requestDeletion = async (req, res) => {
+  try {
+    const result = await require('./account-deletion.service').createAccountDeletionService().request(req.user.id, req.body);
+    return res.status(202).json(result);
+  } catch (err) { return sendError(res, err); }
+};
+
 exports.register = (req, res) => {
   res.status(501).json({ message: 'Register not implemented' });
 };

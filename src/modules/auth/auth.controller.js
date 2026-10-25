@@ -64,7 +64,7 @@ function createAuthController({
   issueTokenPair: createTokens = issueTokenPair,
   userRepository: injectedUserRepository,
   emailService = defaultEmailService,
-  notificationDevices = createNotificationDeviceRepository(),
+  notificationDevices,
 } = {}) {
   const repository = injectedUserRepository || users;
 
@@ -99,6 +99,7 @@ function createAuthController({
       const { name, email, picture, sub } = payload;
 
       let user = await repository.findByEmail(email);
+      if (user?.deletionRequest?.status === 'pending') return res.status(403).json({error:'Account deletion requested', code:'ACCOUNT_DELETION_PENDING'});
       const isNewUser = !user;
 
       if (isNewUser) {
@@ -149,7 +150,7 @@ function createAuthController({
       }
 
       const user = await repository.findById(decoded.sub);
-      if (!user) {
+      if (!user || user.deletionRequest?.status === 'pending') {
         await deleteRefreshSession(redis, decoded.sessionId);
         return res.status(401).json({ error: 'Invalid refresh token' });
       }
@@ -174,7 +175,7 @@ function createAuthController({
         // A logout invalidates every registered push token for this account.
         // This prevents notifications being delivered to a device after the
         // user has explicitly signed out there (including other sessions).
-        await notificationDevices.revokeAllForUser(decoded.sub);
+        await (notificationDevices || createNotificationDeviceRepository()).revokeAllForUser(decoded.sub);
       } catch (err) {
         // Logout should be idempotent from the client perspective.
       }

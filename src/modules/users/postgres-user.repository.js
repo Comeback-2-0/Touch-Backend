@@ -14,6 +14,8 @@ function mapUserRow(row) {
     id: row.id,
     firebaseUid: row.firebase_uid || '',
     uid: row.uid || '',
+    appleSubject: row.apple_subject || '',
+    deletionRequest: row.deletion_request || null,
     name: row.name || '',
     email: row.email || '',
     photo: row.photo || '',
@@ -48,6 +50,19 @@ function createPostgresUserRepository(sql = getPostgresClient()) {
   }
 
   return {
+    findByAppleSubject(subject) {
+      return first(sql`select * from users where apple_subject = ${subject} limit 1`);
+    },
+    async requestDeletion(userId, request) {
+      return first(sql`update users set deletion_request = coalesce(deletion_request, ${sql.json(request)}), updated_at = now() where id = ${String(userId)} returning *`);
+    },
+    async markDeletionEmailSent(userId, sentAt) {
+      await sql`update users set deletion_request = jsonb_set(deletion_request, '{adminEmailSentAt}', ${sql.json(sentAt)}) where id = ${String(userId)}`;
+    },
+    async findPendingDeletionEmails() {
+      const rows=await sql`select * from users where deletion_request->>'status' = 'pending' and deletion_request->>'adminEmailSentAt' is null limit 100`;
+      return rows.map(mapUserRow);
+    },
     findById(userId) {
       return first(sql`
         select * from users
@@ -91,7 +106,7 @@ function createPostgresUserRepository(sql = getPostgresClient()) {
           id, firebase_uid, uid, name, email, photo, username, bio,
           profile_picture, profile_picture_public_id, is_private,
           is_profile_complete, followers_count, following_count,
-          posts_count, role, last_login_at
+          posts_count, role, last_login_at, apple_subject
         )
         values (
           ${id}, ${clean(input.firebaseUid)}, ${clean(input.uid)}, ${clean(input.name)},
@@ -100,7 +115,7 @@ function createPostgresUserRepository(sql = getPostgresClient()) {
           ${textDefault(input.profilePicturePublicId)}, ${Boolean(input.isPrivate)},
           ${Boolean(input.isProfileComplete)}, ${Number(input.followersCount || 0)},
           ${Number(input.followingCount || 0)}, ${Number(input.postsCount || 0)},
-          ${input.role || 'user'}, ${clean(input.lastLoginAt)}
+          ${input.role || 'user'}, ${clean(input.lastLoginAt)}, ${clean(input.appleSubject)}
         )
         returning *
       `;
@@ -110,6 +125,7 @@ function createPostgresUserRepository(sql = getPostgresClient()) {
       const rows = await sql`
         update users
         set
+          apple_subject = coalesce(${clean(update.appleSubject)}, apple_subject),
           name = coalesce(${clean(update.name)}, name),
           firebase_uid = coalesce(${clean(update.firebaseUid)}, firebase_uid),
           uid = coalesce(${clean(update.uid)}, uid),

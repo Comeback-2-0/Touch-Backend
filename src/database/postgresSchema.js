@@ -25,6 +25,9 @@ async function ensurePostgresSchema(sql = getPostgresClient()) {
     )
   `;
 
+  await sql`alter table users add column if not exists apple_subject text unique`;
+  await sql`alter table users add column if not exists deletion_request jsonb`;
+
   await sql`
     create table if not exists refresh_sessions (
       id text primary key,

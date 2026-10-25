@@ -39,6 +39,13 @@ function incrementPostsCount(userId, by = 1) {
 }
 
 module.exports = {
+  findByAppleSubject: subject => User.findOne({appleSubject: subject}),
+  async requestDeletion(userId, request) {
+    await User.updateOne({_id:userId, deletionRequest:null}, {$set:{deletionRequest:request}});
+    return User.findById(userId);
+  },
+  markDeletionEmailSent: (userId, sentAt) => User.updateOne({_id:userId}, {$set:{'deletionRequest.adminEmailSentAt':sentAt}}),
+  findPendingDeletionEmails: () => User.find({'deletionRequest.status':'pending', 'deletionRequest.adminEmailSentAt':{$exists:false}}).limit(100),
   findById,
   findByEmail,
   findByUsername,

@@ -11,6 +11,8 @@ process.env.NODE_ENV = 'test';
 const {createAccessToken} = require('../../src/modules/auth/auth.tokens');
 const feedbackRoutes = require('../../src/modules/feedback/feedback.routes');
 const BugReport = require('../../src/modules/feedback/bug-report.model');
+const User = require('../../src/modules/users/user.model');
+const userId='507f1f77bcf86cd799439011';
 const FeatureRequest = require('../../src/modules/feedback/feature-request.model');
 
 let mongo;
@@ -26,6 +28,8 @@ test.after(async () => {
 });
 
 test.beforeEach(async () => {
+  await User.deleteMany({});
+  await User.create({_id:userId,email:'maya@example.com',name:'Maya'});
   await BugReport.deleteMany({});
   await FeatureRequest.deleteMany({});
 });
@@ -51,7 +55,7 @@ async function withServer(app, fn) {
 
 function authHeader() {
   const token = createAccessToken({
-    userId: 'user-123',
+    userId,
     email: 'maya@example.com',
     role: 'user',
     sessionId: 'session-123',

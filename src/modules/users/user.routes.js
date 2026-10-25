@@ -10,6 +10,7 @@ router.post('/login', userController.login);
 router.get('/check-username/:username', userController.checkUsername);
 router.post('/complete-profile', auth, userController.completeProfile);
 router.get('/me', auth, userController.getMe);
+router.post('/me/deletion-request', auth, userController.requestDeletion);
 router.patch('/me', auth, userController.updateMe);
 
 router.get('/profile', auth, userController.getProfile);

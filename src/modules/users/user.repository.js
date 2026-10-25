@@ -40,6 +40,10 @@ function createUserRepository({
   }
 
   return {
+    findByAppleSubject(subject) { return activeRepository().findByAppleSubject(subject); },
+    requestDeletion(userId, request) { return activeRepository().requestDeletion(userId, request); },
+    markDeletionEmailSent(userId, sentAt) { return activeRepository().markDeletionEmailSent(userId, sentAt); },
+    findPendingDeletionEmails() { return activeRepository().findPendingDeletionEmails(); },
     findById(userId) {
       return activeRepository().findById(userId);
     },
