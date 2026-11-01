@@ -1,5 +1,7 @@
 const usersDefault = require('../users/user.repository');
 const {issueTokenPair, toPublicUser} = require('./auth.controller');
+const {requestAppleEmailVerification, verifyAppleEmailVerification, normalizeEmail} = require('./apple-email-verification.service');
+function userIdOf(user) { return String(user.id || user._id); }
 async function verifyFirebaseAppleToken(token) {
   const admin = require('firebase-admin');
   if (!admin.apps.length)
@@ -22,22 +24,10 @@ function appleIdentity(claims) {
   const subject = claims.firebase?.identities?.['apple.com']?.[0];
   if (!subject)
     throw Object.assign(Error('Apple identity missing'), {statusCode: 401});
-  const email =
-    typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : '';
-  if (
-    !email ||
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
-    /@privaterelay\.appleid\.com$/i.test(email) ||
-    claims.email_verified !== true
-  ) {
-    throw Object.assign(
-      Error(
-        'Touch requires a verified shared email address. Sign in with Google or share your email with Apple.',
-      ),
-      {statusCode: 400},
-    );
-  }
-  return {subject, email};
+  const email = normalizeEmail(claims.email);
+  const isRelayEmail = /@privaterelay\.appleid\.com$/i.test(email);
+  const isVerifiedEmail = Boolean(email) && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && claims.email_verified === true && !isRelayEmail;
+  return {subject, email, isRelayEmail, isVerifiedEmail};
 }
 function createAppleAuthController({
   users = usersDefault,
@@ -51,7 +41,7 @@ function createAppleAuthController({
       return res.status(400).json({error: 'idToken is required'});
     try {
       const claims = await verifyToken(req.body.idToken);
-      const {subject, email} = appleIdentity(claims);
+      const {subject, email, isRelayEmail, isVerifiedEmail} = appleIdentity(claims);
       let user = await users.findByAppleSubject(subject);
       if (link) {
         if (user && String(user.id || user._id) !== String(req.user.id))
@@ -71,14 +61,26 @@ function createAppleAuthController({
         user = await users.updateById(req.user.id, {appleSubject: subject});
         return res.json({user: toPublicUser(user)});
       }
+      if (user) {
+        user = await users.updateById(userIdOf(user), {
+          appleRelayEmail: isRelayEmail ? email : user.appleRelayEmail,
+          lastLoginAt: new Date(),
+        });
+      } else if (!isVerifiedEmail) {
+        return res.status(422).json({
+          error: 'Verify an email address to finish Apple sign-in.',
+          code: 'APPLE_EMAIL_VERIFICATION_REQUIRED',
+          appleSubject: subject,
+          appleRelayEmail: isRelayEmail ? email : '',
+        });
+      } else {
+        user = await users.findByEmail(email);
+        if (user) {
+          if (user.deletionRequest?.status === 'pending') return res.status(403).json({error:'Account deletion requested', code:'ACCOUNT_DELETION_PENDING'});
+          user = await users.updateById(userIdOf(user), {appleSubject: subject, lastLoginAt: new Date()});
+        }
+      }
       if (!user) {
-        if (await users.findByEmail(email))
-          return res
-            .status(409)
-            .json({
-              error:
-                'An account already uses this email. Sign in with Google, then choose Link Apple Account in Settings.',
-            });
         user = await users.create({
           email,
           appleSubject: subject,
@@ -118,9 +120,51 @@ function createAppleAuthController({
         });
     }
   }
+
+  async function requestEmailVerification(req, res) {
+    try {
+      const claims = await verifyToken(req.body?.idToken);
+      const identity = appleIdentity(claims);
+      const requestedEmail = normalizeEmail(req.body?.email);
+      if (!requestedEmail) return res.status(400).json({error: 'Email is required', code: 'INVALID_EMAIL'});
+      return res.json(await requestAppleEmailVerification({
+        email: requestedEmail,
+        appleSubject: identity.subject,
+        appleRelayEmail: identity.isRelayEmail ? identity.email : '',
+      }));
+    } catch (err) {
+      return res.status(err.statusCode || 401).json({error: err.message || 'Unable to send verification email', code: err.code || 'APPLE_EMAIL_VERIFICATION_FAILED'});
+    }
+  }
+
+  async function verifyEmailVerification(req, res) {
+    try {
+      const claims = await verifyToken(req.body?.idToken);
+      const identity = appleIdentity(claims);
+      const challenge = await verifyAppleEmailVerification({challengeId: req.body?.challengeId, code: req.body?.code});
+      if (challenge.appleSubject !== identity.subject) return res.status(401).json({error: 'Apple sign-in session expired. Start again.', code: 'APPLE_SESSION_EXPIRED'});
+      let user = await users.findByAppleSubject(identity.subject);
+      if (!user) user = await users.findByEmail(challenge.email);
+      if (user?.deletionRequest?.status === 'pending') return res.status(403).json({error: 'Account deletion requested', code: 'ACCOUNT_DELETION_PENDING'});
+      if (user) {
+        user = await users.updateById(userIdOf(user), {
+          appleSubject: identity.subject,
+          appleRelayEmail: identity.isRelayEmail ? identity.email : user.appleRelayEmail,
+          lastLoginAt: new Date(),
+        });
+      } else {
+        user = await users.create({email: challenge.email, appleSubject: identity.subject, appleRelayEmail: identity.isRelayEmail ? identity.email : '', name: typeof claims.name === 'string' ? claims.name : '', lastLoginAt: new Date()});
+      }
+      return res.json({user: toPublicUser(user), ...(await tokens(user))});
+    } catch (err) {
+      return res.status(err.statusCode || 401).json({error: err.message || 'Unable to verify email', code: err.code || 'APPLE_EMAIL_VERIFICATION_FAILED'});
+    }
+  }
   return {
     signIn: (req, res) => authenticate(req, res),
     link: (req, res) => authenticate(req, res, true),
+    requestEmailVerification,
+    verifyEmailVerification,
   };
 }
 module.exports = {createAppleAuthController, appleIdentity};

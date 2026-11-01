@@ -7,6 +7,8 @@ const router = express.Router();
 router.post('/google', googleSignIn);
 const apple = require('./apple-auth.controller').createAppleAuthController();
 router.post('/apple', apple.signIn);
+router.post('/apple/email-verification/request', apple.requestEmailVerification);
+router.post('/apple/email-verification/verify', apple.verifyEmailVerification);
 router.post('/apple/link', auth, apple.link);
 router.post('/refresh', refresh);
 router.post('/logout', logout);

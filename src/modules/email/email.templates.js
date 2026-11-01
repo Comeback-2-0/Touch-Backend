@@ -219,11 +219,29 @@ function buildAdminFeedbackEmail(payload = {}) {
   });
 }
 
+function buildAppleEmailVerificationEmail({to, code} = {}) {
+  return makeEmail({
+    from: 'Touch <no-reply-touch@dophera.tech>',
+    to,
+    subject: 'Your Touch verification code',
+    title: 'Verify your email',
+    preheader: 'Use this one-time code to continue signing in to Touch.',
+    name: '',
+    ctaLabel: null,
+    lines: [
+      'Use the verification code below to continue signing in with Apple:',
+      String(code || ''),
+      'This code expires in 10 minutes and can be used only once. If you did not request this, you can safely ignore this email.',
+    ],
+  });
+}
+
 module.exports = {
   buildWelcomeEmail,
   buildProfileCompletedEmail,
   buildBugReportConfirmationEmail,
   buildFeatureSuggestionConfirmationEmail,
   buildAdminFeedbackEmail,
+  buildAppleEmailVerificationEmail,
   escapeHtml,
 };

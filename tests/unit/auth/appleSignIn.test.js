@@ -21,6 +21,7 @@ function setup(claims, existing = null) {
     users: {
       findByAppleSubject: async () => null,
       findByEmail: async () => existing,
+      updateById: async (id, update) => ({_id: id, email: existing?.email || valid.email, ...existing, ...update}),
       create: async x => {
         created.push(x);
         return {_id: 'u1', ...x};
@@ -39,12 +40,13 @@ const valid = {
     identities: {'apple.com': ['apple-sub']},
   },
 };
-test('Apple relay and missing emails are rejected without creating users', async () => {
+test('Apple relay and missing emails enter email verification without creating users', async () => {
   for (const email of ['', 'a@privaterelay.appleid.com']) {
     const {controller, created} = setup({...valid, email});
     const res = response();
     await controller.signIn({body: {idToken: 'token'}}, res);
-    assert.equal(res.statusCode, 400);
+    assert.equal(res.statusCode, 422);
+    assert.equal(res.body.code, 'APPLE_EMAIL_VERIFICATION_REQUIRED');
     assert.equal(created.length, 0);
   }
 });
@@ -57,11 +59,11 @@ test('Google tokens cannot authenticate via Apple endpoint', async () => {
   await controller.signIn({body: {idToken: 'token'}}, res);
   assert.equal(res.statusCode, 401);
 });
-test('matching email requires explicit linking, never silently merges accounts', async () => {
+test('matching verified email automatically links the Apple identity', async () => {
   const {controller, created} = setup(valid, {_id: 'google-user'});
   const res = response();
   await controller.signIn({body: {idToken: 'token'}}, res);
-  assert.equal(res.statusCode, 409);
+  assert.equal(res.statusCode, 200);
   assert.equal(created.length, 0);
 });
 test('verified Apple identity creates an account and returns session', async () => {

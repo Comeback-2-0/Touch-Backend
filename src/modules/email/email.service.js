@@ -5,6 +5,7 @@ const {
   buildBugReportConfirmationEmail,
   buildFeatureSuggestionConfirmationEmail,
   buildAdminFeedbackEmail,
+  buildAppleEmailVerificationEmail,
 } = require('./email.templates');
 
 const resend = createResendEmailService();
@@ -62,6 +63,10 @@ async function sendFeatureRequestEmails(payload, transport = resend) {
   return results;
 }
 
+function sendAppleEmailVerificationEmail(payload, transport = resend) {
+  return transport.sendEmail(buildAppleEmailVerificationEmail(payload));
+}
+
 async function sendAccountDeletionAdminEmail(payload) {
   const lines = [
     `Account ID: ${payload.userId}`, `Name: ${payload.name || ''}`, `Email: ${payload.email || ''}`,
@@ -78,4 +83,5 @@ module.exports = {
   sendProfileCompletedEmail,
   sendBugReportEmails,
   sendFeatureRequestEmails,
+  sendAppleEmailVerificationEmail,
 };

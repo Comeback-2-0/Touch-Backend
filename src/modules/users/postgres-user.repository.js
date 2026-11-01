@@ -15,6 +15,7 @@ function mapUserRow(row) {
     firebaseUid: row.firebase_uid || '',
     uid: row.uid || '',
     appleSubject: row.apple_subject || '',
+    appleRelayEmail: row.apple_relay_email || '',
     deletionRequest: row.deletion_request || null,
     name: row.name || '',
     email: row.email || '',
@@ -106,7 +107,7 @@ function createPostgresUserRepository(sql = getPostgresClient()) {
           id, firebase_uid, uid, name, email, photo, username, bio,
           profile_picture, profile_picture_public_id, is_private,
           is_profile_complete, followers_count, following_count,
-          posts_count, role, last_login_at, apple_subject
+          posts_count, role, last_login_at, apple_subject, apple_relay_email
         )
         values (
           ${id}, ${clean(input.firebaseUid)}, ${clean(input.uid)}, ${clean(input.name)},
@@ -115,7 +116,7 @@ function createPostgresUserRepository(sql = getPostgresClient()) {
           ${textDefault(input.profilePicturePublicId)}, ${Boolean(input.isPrivate)},
           ${Boolean(input.isProfileComplete)}, ${Number(input.followersCount || 0)},
           ${Number(input.followingCount || 0)}, ${Number(input.postsCount || 0)},
-          ${input.role || 'user'}, ${clean(input.lastLoginAt)}, ${clean(input.appleSubject)}
+          ${input.role || 'user'}, ${clean(input.lastLoginAt)}, ${clean(input.appleSubject)}, ${clean(input.appleRelayEmail)}
         )
         returning *
       `;
@@ -126,6 +127,7 @@ function createPostgresUserRepository(sql = getPostgresClient()) {
         update users
         set
           apple_subject = coalesce(${clean(update.appleSubject)}, apple_subject),
+          apple_relay_email = coalesce(${clean(update.appleRelayEmail)}, apple_relay_email),
           name = coalesce(${clean(update.name)}, name),
           firebase_uid = coalesce(${clean(update.firebaseUid)}, firebase_uid),
           uid = coalesce(${clean(update.uid)}, uid),
