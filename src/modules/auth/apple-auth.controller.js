@@ -33,6 +33,7 @@ function createAppleAuthController({
   users = usersDefault,
   verifyToken = verifyFirebaseAppleToken,
   issueTokenPair: tokens = issueTokenPair,
+  verifyEmailCode: verifyEmailCode = verifyAppleEmailVerification,
   sendWelcome = payload =>
     require('../email/email.service').sendWelcomeEmail(payload),
 } = {}) {
@@ -141,10 +142,27 @@ function createAppleAuthController({
     try {
       const claims = await verifyToken(req.body?.idToken);
       const identity = appleIdentity(claims);
-      const challenge = await verifyAppleEmailVerification({challengeId: req.body?.challengeId, code: req.body?.code});
+      const challenge = await verifyEmailCode({challengeId: req.body?.challengeId, code: req.body?.code});
       if (challenge.appleSubject !== identity.subject) return res.status(401).json({error: 'Apple sign-in session expired. Start again.', code: 'APPLE_SESSION_EXPIRED'});
-      let user = await users.findByAppleSubject(identity.subject);
-      if (!user) user = await users.findByEmail(challenge.email);
+      const appleUser = await users.findByAppleSubject(identity.subject);
+      const emailUser = await users.findByEmail(challenge.email);
+      if (
+        emailUser?.appleSubject &&
+        emailUser.appleSubject !== identity.subject &&
+        (!appleUser || userIdOf(emailUser) !== userIdOf(appleUser))
+      ) {
+        return res.status(409).json({
+          error: 'This email is already linked to a different Apple account. Use that Apple account or contact Touch Support.',
+          code: 'APPLE_ACCOUNT_ALREADY_LINKED_DIFFERENT_IDENTITY',
+        });
+      }
+      if (appleUser && emailUser && userIdOf(appleUser) !== userIdOf(emailUser)) {
+        return res.status(409).json({
+          error: 'This Apple account and email belong to different Touch accounts.',
+          code: 'APPLE_ACCOUNT_EMAIL_CONFLICT',
+        });
+      }
+      let user = appleUser || emailUser;
       if (user?.deletionRequest?.status === 'pending') return res.status(403).json({error: 'Account deletion requested', code: 'ACCOUNT_DELETION_PENDING'});
       if (user) {
         user = await users.updateById(userIdOf(user), {

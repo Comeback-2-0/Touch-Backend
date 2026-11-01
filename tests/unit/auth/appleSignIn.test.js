@@ -74,3 +74,20 @@ test('verified Apple identity creates an account and returns session', async () 
   assert.equal(created[0].appleSubject, 'apple-sub');
   assert.equal(res.body.accessToken, 'a');
 });
+
+test('OTP verification never overwrites a different Apple identity on the email account', async () => {
+  const controller = createAppleAuthController({
+    verifyToken: async () => ({...valid, email: 'relay@privaterelay.appleid.com'}),
+    users: {
+      findByAppleSubject: async () => null,
+      findByEmail: async () => ({_id: 'email-user', email: 'person@example.com', appleSubject: 'apple-b'}),
+      updateById: async () => { throw new Error('must not update a conflicting user'); },
+    },
+    issueTokenPair: async () => ({accessToken: 'a', refreshToken: 'r'}),
+    verifyEmailCode: async () => ({appleSubject: 'apple-sub', email: 'person@example.com'}),
+  });
+  const res = response();
+  await controller.verifyEmailVerification({body: {idToken: 'token', challengeId: 'challenge', code: '123456'}}, res);
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.body.code, 'APPLE_ACCOUNT_ALREADY_LINKED_DIFFERENT_IDENTITY');
+});
