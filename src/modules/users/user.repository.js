@@ -59,8 +59,29 @@ function createUserRepository({
     create(input) {
       return activeRepository().create(input);
     },
+    createWithLifecycle(input, options) {
+      const repository = activeRepository();
+      if (typeof repository.createWithLifecycle === 'function') {
+        return repository.createWithLifecycle(input, options);
+      }
+      return repository.create(input).then(user => ({user, lifecycleQueued: false}));
+    },
     updateById(userId, update) {
       return activeRepository().updateById(userId, update);
+    },
+    updateByIdWithLifecycle(userId, update, options) {
+      const repository = activeRepository();
+      if (typeof repository.updateByIdWithLifecycle === 'function') {
+        return repository.updateByIdWithLifecycle(userId, update, options);
+      }
+      return repository.updateById(userId, update).then(user => ({user, lifecycleQueued: false}));
+    },
+    requestDeletionWithLifecycle(userId, request) {
+      const repository = activeRepository();
+      if (typeof repository.requestDeletionWithLifecycle === 'function') {
+        return repository.requestDeletionWithLifecycle(userId, request);
+      }
+      return repository.requestDeletion(userId, request).then(user => ({user, lifecycleQueued: false}));
     },
     incrementPostsCount(userId, by = 1) {
       return activeRepository().incrementPostsCount(userId, by);

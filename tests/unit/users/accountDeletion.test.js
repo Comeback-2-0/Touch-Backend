@@ -14,6 +14,7 @@ test('request is saved before admin email; retry keeps original deadline', async
   let saved;
   let fail = true;
   let sent = 0;
+  const lifecycle = [];
   const users = {
     findById: async () => ({id: 'u1', email: 'a@example.com', name: 'A'}),
     requestDeletion: async (id, value) => {
@@ -31,6 +32,7 @@ test('request is saved before admin email; retry keeps original deadline', async
       assert.ok(saved);
       if (fail) throw Error('mail unavailable');
     },
+    lifecycle: async event => lifecycle.push(event),
   });
   const first = await service.request('u1', {
     confirmed: true,
@@ -43,6 +45,8 @@ test('request is saved before admin email; retry keeps original deadline', async
   const second = await service.request('u1', {confirmed: true});
   assert.equal(first.dueAt, second.dueAt);
   assert.equal(sent, 1);
+  assert.equal(lifecycle.length, 2);
+  assert.equal(lifecycle[0].operation, 'delete');
 });
 test('confirmation and feedback limits are enforced', async () => {
   const service = createAccountDeletionService({users: {}});

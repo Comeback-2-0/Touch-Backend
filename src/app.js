@@ -17,6 +17,10 @@ const userRoutes = require('./modules/users/user.routes');
 const uploadRoutes = require('./modules/uploads/upload.routes');
 const feedbackRoutes = require('./modules/feedback/feedback.routes');
 const notificationRoutes = require('./modules/notifications/notification.routes');
+const socialRoutes = require('./modules/social/social.routes');
+const profileRoutes = require('./modules/profiles/profile.routes');
+const searchRoutes = require('./modules/search/search.routes');
+const {createStage1FeatureGate} = require('./middleware/stage1FeatureGate');
 const path = require('path');
 const bodyParser = require('body-parser');
 
@@ -41,6 +45,9 @@ app.use('/api/reels', reelUploadRoutes);
 app.use('/uploads', uploadRoutes());
 app.use('/feedback', feedbackRoutes);
 app.use('/notifications', notificationRoutes);
+app.use('/v1/social', createStage1FeatureGate(), socialRoutes);
+app.use('/v1/users', createStage1FeatureGate(), profileRoutes);
+app.use('/v1/search', createStage1FeatureGate(), searchRoutes);
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Fallback route to serve index.html for root URL

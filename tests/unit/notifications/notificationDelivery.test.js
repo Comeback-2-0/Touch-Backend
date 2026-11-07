@@ -41,9 +41,10 @@ function setup(t, records, {registeredDevices, sendResult} = {}) {
   delete require.cache[modulePath];
   t.after(() => { delete require.cache[modulePath]; });
   const {deliverCommunityNotification} = require(modulePath);
-  const deliver = () => deliverCommunityNotification({
+  const deliver = (input = {}) => deliverCommunityNotification({
     userId: 'user-1', type: 'community_reply', content: 'New reply',
     metadata: {communityId: 'community-1', postId: 'post-1'},
+    ...input,
   });
   return {deliver, payloads, revoked, countQueries};
 }
@@ -135,6 +136,73 @@ test('mixed app versions receive separate compatible payloads and revoke the cor
   assert.equal(modern.android.notification.notificationCount, 1);
   assert.deepEqual(modern.data, legacy.data);
   assert.deepEqual(revoked, ['expired-new-android']);
+});
+
+test('typed Stage 1 destinations are sent only to capable devices', async t => {
+  const {deliver, payloads} = setup(t, [], {
+    registeredDevices: [
+      {token: 'legacy-device', platform: 'android', appVersion: '2.3.6'},
+      {token: 'stage1-device', platform: 'android', appVersion: '2.3.14', capabilities: ['stage1_notification_destinations']},
+    ],
+  });
+
+  await deliver({
+    type: 'follow_request',
+    title: 'Follow request',
+    content: 'Roy requested to follow you',
+    metadata: {
+      targetType: 'follow_requests',
+      targetId: 'recipient-1',
+      actorUserId: 'actor-1',
+      requestId: 'request-1',
+      actorName: 'Roy',
+    },
+  });
+
+  assert.equal(payloads.length, 2);
+  const legacy = payloads.find(payload => payload.tokens.includes('legacy-device'));
+  const stage1 = payloads.find(payload => payload.tokens.includes('stage1-device'));
+  assert.deepEqual(legacy.data, {type: 'follow_request', actorName: 'Roy'});
+  assert.deepEqual(stage1.data, {
+    type: 'follow_request',
+    targetType: 'follow_requests',
+    targetId: 'recipient-1',
+    actorUserId: 'actor-1',
+    requestId: 'request-1',
+    actorName: 'Roy',
+  });
+});
+
+test('user-level push preferences suppress Stage 1 delivery for every device', async t => {
+  const {deliver, payloads} = setup(t, [], {
+    registeredDevices: [{token: 'stage1-device', platform: 'android', appVersion: '2.3.14', capabilities: ['stage1_notification_destinations']}],
+  });
+
+  const result = await deliver({
+    type: 'follow',
+    preferenceRepository: {
+      async getForUser() { return {pushEnabled: false, inAppEnabled: true, preferences: {follows: true}}; },
+    },
+  });
+
+  assert.deepEqual(result, {sent: 0, skipped: true});
+  assert.equal(payloads.length, 0);
+});
+
+test('legacy community delivery keeps its existing push behavior when Stage 1 preferences are disabled', async t => {
+  const {deliver, payloads} = setup(t, [], {
+    registeredDevices: [{token: 'legacy-device', platform: 'android', appVersion: '2.3.6'}],
+  });
+
+  const result = await deliver({
+    type: 'community_reply',
+    preferenceRepository: {
+      async getForUser() { return {pushEnabled: false, inAppEnabled: true, preferences: {}}; },
+    },
+  });
+
+  assert.deepEqual(result, {sent: 1, failed: 0});
+  assert.equal(payloads.length, 1);
 });
 
 test('legacy delivery starts without waiting for the new badge lookup', async t => {

@@ -8,6 +8,7 @@ function map(row) {
     token: row.token,
     platform: row.platform,
     appVersion: row.app_version,
+    capabilities: Array.isArray(row.capabilities) ? row.capabilities : [],
     lastSeenAt: row.last_seen_at,
     revokedAt: row.revoked_at,
     preferences: row.preferences || {newPosts: true, postComments: true, commentReplies: true, joinRequests: true, joinDecisions: true, communityActivity: false, queueReview: true},
@@ -16,15 +17,19 @@ function map(row) {
 
 function createNotificationDeviceRepository(sql = getPostgresClient()) {
   return {
-    async register({userId, token, platform = 'unknown', appVersion = '', preferences}) {
+    async register({userId, token, platform = 'unknown', appVersion = '', preferences, capabilities}) {
+      const safeCapabilities = Array.isArray(capabilities)
+        ? [...new Set(capabilities.map(value => String(value).trim()).filter(Boolean))].slice(0, 20)
+        : [];
       const rows = await sql`
-        insert into notification_devices (id, user_id, token, platform, app_version, preferences, last_seen_at, revoked_at, updated_at)
-        values (${uuidv4()}, ${String(userId)}, ${String(token)}, ${String(platform)}, ${String(appVersion)}, ${sql.json(preferences || {newPosts: true, postComments: true, commentReplies: true, joinRequests: true, joinDecisions: true, communityActivity: false, queueReview: true})}, now(), null, now())
+        insert into notification_devices (id, user_id, token, platform, app_version, preferences, capabilities, last_seen_at, revoked_at, updated_at)
+        values (${uuidv4()}, ${String(userId)}, ${String(token)}, ${String(platform)}, ${String(appVersion)}, ${sql.json(preferences || {newPosts: true, postComments: true, commentReplies: true, joinRequests: true, joinDecisions: true, communityActivity: false, queueReview: true})}, ${sql.json(safeCapabilities)}, now(), null, now())
         on conflict (token) do update set
           user_id = excluded.user_id,
           platform = excluded.platform,
           app_version = excluded.app_version,
           preferences = coalesce(notification_devices.preferences, excluded.preferences),
+          capabilities = excluded.capabilities,
           last_seen_at = now(),
           revoked_at = null,
           updated_at = now()

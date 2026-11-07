@@ -1,6 +1,7 @@
 const usersDefault = require('../users/user.repository');
 const {issueTokenPair, toPublicUser} = require('./auth.controller');
 const {requestAppleEmailVerification, verifyAppleEmailVerification, normalizeEmail} = require('./apple-email-verification.service');
+const {enqueueUserLifecycleEvents} = require('../users/user-lifecycle.service');
 function userIdOf(user) { return String(user.id || user._id); }
 async function verifyFirebaseAppleToken(token) {
   const admin = require('firebase-admin');
@@ -36,7 +37,18 @@ function createAppleAuthController({
   verifyEmailCode: verifyEmailCode = verifyAppleEmailVerification,
   sendWelcome = payload =>
     require('../email/email.service').sendWelcomeEmail(payload),
+  lifecycle = enqueueUserLifecycleEvents,
 } = {}) {
+  async function createUserWithLifecycle(input) {
+    if (typeof users.createWithLifecycle === 'function') return users.createWithLifecycle(input);
+    return {user: await users.create(input), lifecycleQueued: false};
+  }
+
+  async function updateUserWithLifecycle(userId, update) {
+    if (typeof users.updateByIdWithLifecycle === 'function') return users.updateByIdWithLifecycle(userId, update);
+    return {user: await users.updateById(userId, update), lifecycleQueued: false};
+  }
+
   async function authenticate(req, res, link = false) {
     if (typeof req.body?.idToken !== 'string' || !req.body.idToken)
       return res.status(400).json({error: 'idToken is required'});
@@ -44,6 +56,7 @@ function createAppleAuthController({
       const claims = await verifyToken(req.body.idToken);
       const {subject, email, isRelayEmail, isVerifiedEmail} = appleIdentity(claims);
       let user = await users.findByAppleSubject(subject);
+      let lifecycleQueued = false;
       if (link) {
         if (user && String(user.id || user._id) !== String(req.user.id))
           return res
@@ -63,10 +76,12 @@ function createAppleAuthController({
         return res.json({user: toPublicUser(user)});
       }
       if (user) {
-        user = await users.updateById(userIdOf(user), {
+        const persisted = await updateUserWithLifecycle(userIdOf(user), {
           appleRelayEmail: isRelayEmail ? email : user.appleRelayEmail,
           lastLoginAt: new Date(),
         });
+        user = persisted.user;
+        lifecycleQueued = persisted.lifecycleQueued;
       } else if (!isVerifiedEmail) {
         return res.status(422).json({
           error: 'Verify an email address to finish Apple sign-in.',
@@ -78,16 +93,20 @@ function createAppleAuthController({
         user = await users.findByEmail(email);
         if (user) {
           if (user.deletionRequest?.status === 'pending') return res.status(403).json({error:'Account deletion requested', code:'ACCOUNT_DELETION_PENDING'});
-          user = await users.updateById(userIdOf(user), {appleSubject: subject, lastLoginAt: new Date()});
+          const persisted = await updateUserWithLifecycle(userIdOf(user), {appleSubject: subject, lastLoginAt: new Date()});
+          user = persisted.user;
+          lifecycleQueued = persisted.lifecycleQueued;
         }
       }
       if (!user) {
-        user = await users.create({
+        const persisted = await createUserWithLifecycle({
           email,
           appleSubject: subject,
           name: typeof claims.name === 'string' ? claims.name : '',
           lastLoginAt: new Date(),
         });
+        user = persisted.user;
+        lifecycleQueued = persisted.lifecycleQueued;
         try {
           await sendWelcome({to: email, name: user.name});
         } catch {
@@ -101,6 +120,7 @@ function createAppleAuthController({
             error: 'Account deletion requested',
             code: 'ACCOUNT_DELETION_PENDING',
           });
+      if (!lifecycleQueued) await lifecycle({user});
       return res
         .status(200)
         .json({user: toPublicUser(user), ...(await tokens(user))});
@@ -163,16 +183,22 @@ function createAppleAuthController({
         });
       }
       let user = appleUser || emailUser;
+      let lifecycleQueued = false;
       if (user?.deletionRequest?.status === 'pending') return res.status(403).json({error: 'Account deletion requested', code: 'ACCOUNT_DELETION_PENDING'});
       if (user) {
-        user = await users.updateById(userIdOf(user), {
+        const persisted = await updateUserWithLifecycle(userIdOf(user), {
           appleSubject: identity.subject,
           appleRelayEmail: identity.isRelayEmail ? identity.email : user.appleRelayEmail,
           lastLoginAt: new Date(),
         });
+        user = persisted.user;
+        lifecycleQueued = persisted.lifecycleQueued;
       } else {
-        user = await users.create({email: challenge.email, appleSubject: identity.subject, appleRelayEmail: identity.isRelayEmail ? identity.email : '', name: typeof claims.name === 'string' ? claims.name : '', lastLoginAt: new Date()});
+        const persisted = await createUserWithLifecycle({email: challenge.email, appleSubject: identity.subject, appleRelayEmail: identity.isRelayEmail ? identity.email : '', name: typeof claims.name === 'string' ? claims.name : '', lastLoginAt: new Date()});
+        user = persisted.user;
+        lifecycleQueued = persisted.lifecycleQueued;
       }
+      if (!lifecycleQueued) await lifecycle({user});
       return res.json({user: toPublicUser(user), ...(await tokens(user))});
     } catch (err) {
       return res.status(err.statusCode || 401).json({error: err.message || 'Unable to verify email', code: err.code || 'APPLE_EMAIL_VERIFICATION_FAILED'});

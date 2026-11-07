@@ -136,6 +136,27 @@ test('getCurrentUser returns only public profile fields', async () => {
   assert.equal(result.email, undefined);
 });
 
+test('getCurrentUser prefers authoritative Neo4j relationship statistics', async () => {
+  const user = await createUser({
+    username: 'graphstats',
+    followersCount: 1,
+    followingCount: 2,
+    postsCount: 3,
+  });
+
+  const result = await userService.getCurrentUser(user._id.toString(), {
+    socialRepository: {
+      async profileStats() {
+        return {followersCount: 11, followingCount: 12};
+      },
+    },
+  });
+
+  assert.equal(result.followersCount, 11);
+  assert.equal(result.followingCount, 12);
+  assert.equal(result.postsCount, 3);
+});
+
 test('updateProfile updates JSON profile fields', async () => {
   const user = await createUser({ username: 'oldname', profilePicturePublicId: 'old-id' });
 

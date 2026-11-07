@@ -1,5 +1,6 @@
 const usersDefault = require('./user.repository');
 const {sendAccountDeletionAdminEmail} = require('../email/email.service');
+const {enqueueUserLifecycleEvents} = require('./user-lifecycle.service');
 
 // Working days are Monday-Friday in Asia/Kolkata. Public holidays are not excluded.
 function workingDayDeadline(now) {
@@ -16,6 +17,7 @@ function createAccountDeletionService({
   users = usersDefault,
   sendAdminEmail = sendAccountDeletionAdminEmail,
   now = () => new Date(),
+  lifecycle = enqueueUserLifecycleEvents,
 } = {}) {
   async function notify(user) {
     if (!user.deletionRequest || user.deletionRequest.adminEmailSentAt) return;
@@ -52,16 +54,26 @@ function createAccountDeletionService({
         {statusCode: 400},
       );
     const timestamp = now();
-    const user = await users.requestDeletion(userId, {
-      status: 'pending',
-      requestedAt: timestamp.toISOString(),
-      dueAt: workingDayDeadline(timestamp),
-      reason,
-      details,
-    });
+    const persisted = typeof users.requestDeletionWithLifecycle === 'function'
+      ? await users.requestDeletionWithLifecycle(userId, {
+        status: 'pending',
+        requestedAt: timestamp.toISOString(),
+        dueAt: workingDayDeadline(timestamp),
+        reason,
+        details,
+      })
+      : {user: await users.requestDeletion(userId, {
+        status: 'pending',
+        requestedAt: timestamp.toISOString(),
+        dueAt: workingDayDeadline(timestamp),
+        reason,
+        details,
+      }), lifecycleQueued: false};
+    const user = persisted?.user || persisted;
     if (!user)
       throw Object.assign(new Error('User not found'), {statusCode: 404});
     await notify(user);
+    if (!persisted?.lifecycleQueued) await lifecycle({user, operation: 'delete'});
     return {
       status: 'pending',
       requestedAt: user.deletionRequest.requestedAt,

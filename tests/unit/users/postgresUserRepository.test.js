@@ -81,3 +81,71 @@ test('create uses empty strings for not-null profile fields when Google sign-in 
   assert.notEqual(calls[0].values[8], null);
   assert.notEqual(calls[0].values[9], null);
 });
+
+test('profile update and graph lifecycle outbox insert share one PostgreSQL transaction', async () => {
+  const calls = [];
+  const userRow = {
+    id: 'user-1',
+    name: 'Updated Name',
+    username: 'updated',
+    profile_picture: '',
+    is_profile_complete: true,
+    deletion_request: null,
+  };
+  const sql = async (strings, ...values) => {
+    const query = strings.join('?');
+    calls.push({query, values});
+    if (/update users/i.test(query)) return [userRow];
+    return [];
+  };
+  sql.json = value => value;
+  sql.begin = async callback => {
+    calls.push({query: 'begin'});
+    const transaction = async (strings, ...values) => sql(strings, ...values);
+    transaction.json = sql.json;
+    return callback(transaction);
+  };
+
+  const repository = createPostgresUserRepository(sql);
+  const result = await repository.updateByIdWithLifecycle('user-1', {name: 'Updated Name'});
+
+  assert.equal(result.user._id, 'user-1');
+  assert.equal(result.lifecycleQueued, true);
+  assert.equal(calls[0].query, 'begin');
+  assert.match(calls[1].query, /update users/i);
+  assert.match(calls[2].query, /insert into user_graph_outbox/i);
+});
+
+test('user creation and graph lifecycle outbox insert share one PostgreSQL transaction', async () => {
+  const calls = [];
+  const userRow = {
+    id: 'user-2',
+    name: 'New User',
+    username: '',
+    profile_picture: '',
+    is_profile_complete: false,
+    deletion_request: null,
+  };
+  const sql = async (strings, ...values) => {
+    const query = strings.join('?');
+    calls.push({query, values});
+    if (/insert into users/i.test(query)) return [userRow];
+    return [];
+  };
+  sql.json = value => value;
+  sql.begin = async callback => {
+    calls.push({query: 'begin'});
+    const transaction = async (strings, ...values) => sql(strings, ...values);
+    transaction.json = sql.json;
+    return callback(transaction);
+  };
+
+  const repository = createPostgresUserRepository(sql);
+  const result = await repository.createWithLifecycle({id: 'user-2', name: 'New User', email: 'new@example.com'});
+
+  assert.equal(result.user._id, 'user-2');
+  assert.equal(result.lifecycleQueued, true);
+  assert.equal(calls[0].query, 'begin');
+  assert.match(calls[1].query, /insert into users/i);
+  assert.match(calls[2].query, /insert into user_graph_outbox/i);
+});

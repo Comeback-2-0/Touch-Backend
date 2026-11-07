@@ -21,6 +21,7 @@ function createResponse() {
 test('google sign-in creates users through the configured user repository', async () => {
   const calls = [];
   const emails = [];
+  const lifecycle = [];
   const controller = createAuthController({
     googleClient: {
       async verifyIdToken() {
@@ -58,6 +59,7 @@ test('google sign-in creates users through the configured user repository', asyn
     emailService: {
       sendWelcomeEmail: async payload => emails.push(payload),
     },
+    lifecycle: async event => lifecycle.push(event),
   });
 
   const res = createResponse();
@@ -76,11 +78,14 @@ test('google sign-in creates users through the configured user repository', asyn
       name: 'Maya',
     },
   ]);
+  assert.equal(lifecycle.length, 1);
+  assert.equal(lifecycle[0].user.id, 'user-1');
 });
 
 test('google sign-in updates existing users through the configured user repository', async () => {
   const calls = [];
   const emails = [];
+  const lifecycle = [];
   const controller = createAuthController({
     googleClient: {
       async verifyIdToken() {
@@ -125,6 +130,7 @@ test('google sign-in updates existing users through the configured user reposito
     emailService: {
       sendWelcomeEmail: async payload => emails.push(payload),
     },
+    lifecycle: async event => lifecycle.push(event),
   });
 
   const res = createResponse();
@@ -137,4 +143,6 @@ test('google sign-in updates existing users through the configured user reposito
     'update:user-1:Updated:google-1',
   ]);
   assert.deepEqual(emails, []);
+  assert.equal(lifecycle.length, 1);
+  assert.equal(lifecycle[0].user.id, 'user-1');
 });

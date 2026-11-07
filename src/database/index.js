@@ -7,6 +7,7 @@ const {
   closePostgres,
 } = require('./postgresClient');
 const { ensurePostgresSchema } = require('./postgresSchema');
+const { ensureStage1Schema } = require('./stage1Schema');
 const {
   getNeo4jDriver,
   verifyNeo4jConnectivity,
@@ -25,6 +26,7 @@ async function connectDatabases({
   postgres = {
     ping: () => pingPostgres(getPostgresClient()),
     ensureSchema: () => ensurePostgresSchema(getPostgresClient()),
+    ensureStage1Schema: () => ensureStage1Schema(getPostgresClient()),
   },
   redis = { connect: connectRedis },
   neo4j = {
@@ -47,6 +49,7 @@ async function connectDatabases({
   if (postgres) {
     await postgres.ping();
     await postgres.ensureSchema();
+    if (postgres.ensureStage1Schema) await postgres.ensureStage1Schema();
     status.postgres = true;
   }
 

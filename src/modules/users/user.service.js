@@ -2,6 +2,7 @@ const repository = require('./user.repository');
 const { validateUsername, normalizeUsername, toBoolean } = require('./user.validation');
 const cloudinaryStorage = require('../../storage/cloudinary');
 const defaultEmailService = require('../email/email.service');
+const {enqueueUserLifecycleEvents} = require('./user-lifecycle.service');
 
 function httpError(message, statusCode) {
   return Object.assign(new Error(message), { statusCode });
@@ -70,7 +71,8 @@ async function completeProfile(userId, input, options = {}) {
   await assertUsernameAvailable(update.username, userId);
 
   update.isProfileComplete = true;
-  const user = await repository.updateById(userId, update);
+  const persisted = await repository.updateByIdWithLifecycle(userId, update, {operation: 'upsert'});
+  const user = persisted?.user || persisted;
   if (!user) throw httpError('User not found', 404);
 
   if (!currentUser.isProfileComplete) {
@@ -86,11 +88,26 @@ async function completeProfile(userId, input, options = {}) {
     }
   }
 
+  if (!persisted?.lifecycleQueued) await enqueueUserLifecycleEvents({user});
+
   return publicProfile(user);
 }
 
-async function getCurrentUser(userId) {
-  return publicProfile(await getExistingUser(userId));
+async function getCurrentUser(userId, {socialRepository} = {}) {
+  const profile = publicProfile(await getExistingUser(userId));
+  try {
+    const graph = socialRepository || require('../social/social.repository').createSocialRepository();
+    const stats = await graph.profileStats?.({userId});
+    if (stats) {
+      profile.followersCount = Number(stats.followersCount || 0);
+      profile.followingCount = Number(stats.followingCount || 0);
+    }
+  } catch (error) {
+    // Keep the existing profile route usable during graph rollout. PostgreSQL
+    // counters remain the compatibility fallback until graph backfill completes.
+    if (process.env.NODE_ENV !== 'test') console.warn('Profile graph statistics unavailable:', error.message);
+  }
+  return profile;
 }
 
 async function updateProfile(userId, input, storage = cloudinaryStorage) {
@@ -106,7 +123,8 @@ async function updateProfile(userId, input, storage = cloudinaryStorage) {
     && update.profilePicturePublicId
     && update.profilePicturePublicId !== oldPublicId;
 
-  const user = await repository.updateById(userId, update);
+  const persisted = await repository.updateByIdWithLifecycle(userId, update, {operation: 'upsert'});
+  const user = persisted?.user || persisted;
   if (!user) throw httpError('User not found', 404);
 
   if (isReplacingProfilePicture && oldPublicId) {
@@ -118,6 +136,8 @@ async function updateProfile(userId, input, storage = cloudinaryStorage) {
       }
     }
   }
+
+  if (!persisted?.lifecycleQueued) await enqueueUserLifecycleEvents({user});
 
   return publicProfile(user);
 }

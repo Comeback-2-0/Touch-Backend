@@ -89,6 +89,11 @@ test('neo4j schema bootstrap creates unique id constraints for graph nodes', asy
   assert.match(schema, /FOR \(p:Post\) REQUIRE p\.id IS UNIQUE/i);
   assert.match(schema, /CREATE CONSTRAINT touch_reel_id_unique IF NOT EXISTS/i);
   assert.match(schema, /FOR \(r:Reel\) REQUIRE r\.id IS UNIQUE/i);
+  assert.match(schema, /CREATE CONSTRAINT touch_social_notification_dedupe_unique IF NOT EXISTS/i);
+  assert.match(schema, /FOR \(o:SocialNotificationOutbox\) REQUIRE o\.dedupeKey IS UNIQUE/i);
+  assert.match(schema, /CREATE INDEX touch_follow_request_id IF NOT EXISTS/i);
+  assert.match(schema, /REQUESTED_TO_FOLLOW[\s\S]*requestId/i);
+  assert.match(schema, /CREATE INDEX touch_social_notification_pending IF NOT EXISTS/i);
   assert.deepEqual(queries[0].sessionOptions, { database: 'neo4j' });
 });
 

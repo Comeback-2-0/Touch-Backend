@@ -1,10 +1,16 @@
 const admin = require('firebase-admin');
 const {createNotificationDeviceRepository} = require('./notification-device.repository');
 const {createNotificationRepository} = require('./mongo-notification.repository');
+const {
+  notificationPreferenceDecision,
+  readNotificationPreferences,
+} = require('./notification-preference.policy');
 
 // First Android release with the notification icon and summary/count behavior.
 // Missing or unrecognized versions must keep the original push contract.
 const NOTIFICATION_SUMMARY_VERSION = [2, 3, 7];
+const STAGE1_NOTIFICATION_DESTINATION_CAPABILITY = 'stage1_notification_destinations';
+const STAGE1_NOTIFICATION_TYPES = new Set(['follow', 'follow_request', 'follow_accepted']);
 
 function supportsNotificationSummary(device) {
   if (device.platform !== 'android' || !/^\d+\.\d+\.\d+$/.test(device.appVersion || '')) return false;
@@ -16,6 +22,21 @@ function supportsNotificationSummary(device) {
     }
   }
   return true;
+}
+
+function supportsStage1NotificationDestinations(device) {
+  return Array.isArray(device.capabilities)
+    && device.capabilities.includes(STAGE1_NOTIFICATION_DESTINATION_CAPABILITY);
+}
+
+function pushData({type, metadata = {}, includeTypedDestination}) {
+  const safeMetadata = metadata && typeof metadata === 'object' ? metadata : {};
+  const source = includeTypedDestination || !safeMetadata.targetType
+    ? safeMetadata
+    : Object.fromEntries(Object.entries(safeMetadata).filter(([key]) => ![
+      'targetType', 'targetId', 'actorUserId', 'requestId',
+    ].includes(key)));
+  return Object.fromEntries(Object.entries({type, ...source}).map(([key, value]) => [key, String(value)]));
 }
 
 let initialized = false;
@@ -31,11 +52,8 @@ function getMessaging() {
   return admin.messaging();
 }
 
-async function deliverCommunityNotification({userId, type, title, content, metadata}) {
-  const messaging = getMessaging();
-  if (!messaging) return {sent: 0, skipped: true};
-  const repo = createNotificationDeviceRepository();
-  const preferenceKey = {
+function devicePreferenceKeyFor(type) {
+  return {
     community_new_post: 'newPosts',
     community_comment: 'postComments',
     community_reply: 'commentReplies',
@@ -46,24 +64,54 @@ async function deliverCommunityNotification({userId, type, title, content, metad
     community_activity_comment: 'communityActivity',
     community_activity_reply: 'communityActivity',
   }[type];
-  const devices = (await repo.listActiveForUser(userId)).filter(device => preferenceKey ? device.preferences?.[preferenceKey] !== false : true);
+}
+
+async function getPushDeliveryContext({userId, type, preferences, preferenceRepository}) {
+  const messaging = getMessaging();
+  if (!messaging) return {messaging: null, devices: []};
+  // Stage 1 global notification preferences apply only to the new follow-graph
+  // notifications. Keep them out of the existing community notification path.
+  const isStage1Notification = STAGE1_NOTIFICATION_TYPES.has(type);
+  const userPreferences = isStage1Notification && preferences === undefined
+    ? await readNotificationPreferences(userId, preferenceRepository)
+    : preferences;
+  const decision = isStage1Notification
+    ? notificationPreferenceDecision({type, preferences: userPreferences})
+    : {push: true};
+  if (!decision.push) return {messaging, devices: [], preferenceDisabled: true};
+  const repo = createNotificationDeviceRepository();
+  const preferenceKey = devicePreferenceKeyFor(type);
+  const devices = (await repo.listActiveForUser(userId))
+    .filter(device => preferenceKey ? device.preferences?.[preferenceKey] !== false : true);
+  return {messaging, devices, repo};
+}
+
+async function hasEligiblePushDelivery(input) {
+  const context = await getPushDeliveryContext(input);
+  return Boolean(context.messaging && context.devices.length && !context.preferenceDisabled);
+}
+
+async function deliverCommunityNotification({userId, type, title, content, metadata, preferences, preferenceRepository}) {
+  const {messaging, devices, repo, preferenceDisabled} = await getPushDeliveryContext({userId, type, preferences, preferenceRepository});
+  if (!messaging) return {sent: 0, skipped: true};
+  if (preferenceDisabled) return {sent: 0, skipped: true};
   if (!devices.length) return {sent: 0};
-  const data = Object.fromEntries(Object.entries({type, ...(metadata || {})}).map(([key, value]) => [key, String(value)]));
-  const legacyDevices = [];
-  const summaryDevices = [];
+  const groups = new Map();
   for (const device of devices) {
-    (supportsNotificationSummary(device) ? summaryDevices : legacyDevices).push(device);
+    const summary = supportsNotificationSummary(device);
+    const typedDestination = supportsStage1NotificationDestinations(device);
+    const key = `${summary ? 'summary' : 'legacy'}:${typedDestination ? 'typed' : 'legacy'}`;
+    const group = groups.get(key) || {devices: [], summary, typedDestination};
+    group.devices.push(device);
+    groups.set(key, group);
   }
 
   // Start legacy delivery independently so badge lookups cannot delay older apps.
-  const deliveries = await Promise.all([
-    {devices: legacyDevices, summary: false},
-    {devices: summaryDevices, summary: true},
-  ].filter(group => group.devices.length).map(async group => {
+  const deliveries = await Promise.all([...groups.values()].map(async group => {
     const payload = {
       tokens: group.devices.map(device => device.token),
-    notification: {title: title || 'Touch community update', body: content || 'New community activity'},
-      data,
+      notification: {title: title || 'Touch community update', body: content || 'New community activity'},
+      data: pushData({type, metadata, includeTypedDestination: group.typedDestination}),
     };
     if (group.summary) {
       // Read persisted state: the Redis counter can be missing or stale.
@@ -98,4 +146,8 @@ async function deliverCommunityNotification({userId, type, title, content, metad
   }), {sent: 0, failed: 0});
 }
 
-module.exports = {deliverCommunityNotification};
+module.exports = {
+  deliverCommunityNotification,
+  hasEligiblePushDelivery,
+  supportsStage1NotificationDestinations,
+};

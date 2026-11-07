@@ -43,12 +43,28 @@ async function ensureNeo4jSchema(neo4jDriver = getNeo4jDriver()) {
       FOR (u:User) REQUIRE u.id IS UNIQUE
     `);
     await session.run(`
+      CREATE CONSTRAINT touch_user_user_id_unique IF NOT EXISTS
+      FOR (u:User) REQUIRE u.userId IS UNIQUE
+    `);
+    await session.run(`
       CREATE CONSTRAINT touch_post_id_unique IF NOT EXISTS
       FOR (p:Post) REQUIRE p.id IS UNIQUE
     `);
     await session.run(`
       CREATE CONSTRAINT touch_reel_id_unique IF NOT EXISTS
       FOR (r:Reel) REQUIRE r.id IS UNIQUE
+    `);
+    await session.run(`
+      CREATE CONSTRAINT touch_social_notification_dedupe_unique IF NOT EXISTS
+      FOR (o:SocialNotificationOutbox) REQUIRE o.dedupeKey IS UNIQUE
+    `);
+    await session.run(`
+      CREATE INDEX touch_follow_request_id IF NOT EXISTS
+      FOR ()-[r:REQUESTED_TO_FOLLOW]-() ON (r.requestId)
+    `);
+    await session.run(`
+      CREATE INDEX touch_social_notification_pending IF NOT EXISTS
+      FOR (o:SocialNotificationOutbox) ON (o.status, o.nextAttemptAt)
     `);
   } finally {
     await session.close();

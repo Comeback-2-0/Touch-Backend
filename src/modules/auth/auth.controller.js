@@ -15,6 +15,7 @@ const {
 } = require('./auth.sessions');
 const defaultEmailService = require('../email/email.service');
 const {createNotificationDeviceRepository} = require('../notifications/notification-device.repository');
+const {enqueueUserLifecycleEvents} = require('../users/user-lifecycle.service');
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -65,8 +66,19 @@ function createAuthController({
   userRepository: injectedUserRepository,
   emailService = defaultEmailService,
   notificationDevices,
+  lifecycle = enqueueUserLifecycleEvents,
 } = {}) {
   const repository = injectedUserRepository || users;
+
+  async function createUserWithLifecycle(input) {
+    if (typeof repository.createWithLifecycle === 'function') return repository.createWithLifecycle(input);
+    return {user: await repository.create(input), lifecycleQueued: false};
+  }
+
+  async function updateUserWithLifecycle(userId, update) {
+    if (typeof repository.updateByIdWithLifecycle === 'function') return repository.updateByIdWithLifecycle(userId, update);
+    return {user: await repository.updateById(userId, update), lifecycleQueued: false};
+  }
 
   async function notifyWelcome(user) {
     try {
@@ -101,9 +113,10 @@ function createAuthController({
       let user = await repository.findByEmail(email);
       if (user?.deletionRequest?.status === 'pending') return res.status(403).json({error:'Account deletion requested', code:'ACCOUNT_DELETION_PENDING'});
       const isNewUser = !user;
+      let lifecycleQueued = false;
 
       if (isNewUser) {
-        user = await repository.create({
+        const persisted = await createUserWithLifecycle({
           name,
           email,
           photo: picture,
@@ -111,19 +124,25 @@ function createAuthController({
           uid: sub,
           lastLoginAt: new Date(),
         });
+        user = persisted.user;
+        lifecycleQueued = persisted.lifecycleQueued;
       } else {
-        user = await repository.updateById(userIdOf(user), {
+        const persisted = await updateUserWithLifecycle(userIdOf(user), {
           name: name || user.name,
           photo: picture || user.photo,
           firebaseUid: user.firebaseUid || sub,
           uid: user.uid || sub,
           lastLoginAt: new Date(),
         });
+        user = persisted.user;
+        lifecycleQueued = persisted.lifecycleQueued;
       }
 
       if (isNewUser) {
         await notifyWelcome(user);
       }
+
+      if (!lifecycleQueued) await lifecycle({user});
 
       const tokens = await createTokens(user);
       return res.status(200).json({ user: toPublicUser(user), ...tokens });

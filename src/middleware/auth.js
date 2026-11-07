@@ -13,7 +13,7 @@ function createAuthMiddleware({users}={}) {
   // Allow safe retries after a response is lost; the original deadline is retained.
   const isDeletionRetry=req.method==='POST'&&req.route?.path==='/me/deletion-request';
   if(user.deletionRequest?.status==='pending'&&!isDeletionRetry)return res.status(403).json({error:'Account deletion requested',code:'ACCOUNT_DELETION_PENDING'});
-  req.user={id:decoded.sub,email:decoded.email,role:decoded.role||'user',sessionId:decoded.sessionId};
+  req.user={id:decoded.sub,email:decoded.email,role:decoded.role||'user',sessionId:decoded.sessionId,isProfileComplete:Boolean(user.isProfileComplete)};
   return next();
  };
 }

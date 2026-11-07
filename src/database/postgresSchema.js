@@ -233,6 +233,8 @@ async function ensurePostgresSchema(sql = getPostgresClient()) {
   `;
 
   await sql`create index if not exists idx_users_username on users(username)`;
+  await sql`create index if not exists idx_users_profile_username_prefix on users (lower(username) text_pattern_ops) where is_profile_complete = true`;
+  await sql`create index if not exists idx_users_profile_name_prefix on users (lower(name) text_pattern_ops) where is_profile_complete = true`;
   await sql`create index if not exists idx_refresh_sessions_user_id on refresh_sessions(user_id)`;
   await sql`create index if not exists idx_community_memberships_user_id on community_memberships(user_id)`;
   await sql`create index if not exists idx_community_memberships_community_id on community_memberships(community_id)`;
