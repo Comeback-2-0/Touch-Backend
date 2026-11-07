@@ -238,7 +238,8 @@ test('relationship lists ignore explicitly deactivated graph users', async () =>
 
   const query = runs.find(entry => entry.cypher && entry.cypher.includes('RETURN u'));
   assert.match(query.cypher, /coalesce\(u\.accountActive, false\) = true/);
-  assert.equal(query.params.limit, 20);
+  assert.equal(query.params.limit.toNumber(), 20);
+  assert.equal(query.params.limit.constructor.name, 'Integer');
 });
 
 test('follow and request notifications are emitted only for a newly-created relationship', async () => {

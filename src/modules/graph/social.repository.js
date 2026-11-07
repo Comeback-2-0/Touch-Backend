@@ -1,3 +1,4 @@
+const neo4j = require('neo4j-driver');
 const { getNeo4jDriver } = require('../../database/neo4jClient');
 
 function createSocialGraphRepository({
@@ -240,7 +241,7 @@ function createSocialGraphRepository({
       const safeLimit = Number.isInteger(parsedLimit) && parsedLimit > 0
         ? Math.min(parsedLimit, 50)
         : 20;
-      const result = await read(query, {targetId: String(targetId), limit: safeLimit});
+      const result = await read(query, {targetId: String(targetId), limit: neo4j.int(safeLimit)});
       return result.records.map(record => { const user = record.get('u').properties; return {id: user.id, name: user.name || '', username: user.username || '', profilePicture: user.profilePicture || ''}; });
     },
     async listNotificationOutbox(limit = 50) {
@@ -251,7 +252,7 @@ function createSocialGraphRepository({
           AND o.nextAttemptAt <= datetime()
         OPTIONAL MATCH (a:User {id: o.actorId})
         RETURN o, a ORDER BY o.createdAt ASC LIMIT $limit
-      `, {limit: Math.min(Number(limit) || 50, 100)});
+      `, {limit: neo4j.int(Math.min(Number(limit) || 50, 100))});
       return result.records.map(record => {
         const o = record.get('o').properties;
         const a = record.get('a');
