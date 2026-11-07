@@ -26,9 +26,9 @@ function boundedDatabaseTimeout(value, fallback = 750) {
 }
 
 /**
- * People Search reads the authoritative PostgreSQL user table directly.
- * The query is bounded and relies on the Stage 1 lower(text) prefix indexes;
- * it never loads the user table into application memory.
+ * PostgreSQL is the authoritative user source and the availability fallback
+ * for People Search. The query is bounded and relies on the Stage 1 lower(text)
+ * prefix indexes; it never loads the user table into application memory.
  */
 function createPostgresSearchRepository(
   sql = getPostgresClient(),

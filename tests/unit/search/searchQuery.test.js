@@ -17,7 +17,7 @@ test('honors the bounded deployment query-length setting', () => {
   }
 });
 
-test('cursor encoding contains only a bounded PostgreSQL offset and query', () => {
+test('cursor encoding contains only a bounded provider offset and query', () => {
   const cursor = encodeCursor({type: 'postgres', offset: 20, query: 'roy'});
   assert.deepEqual(decodeCursor(cursor), {type: 'postgres', offset: 20, query: 'roy'});
 });

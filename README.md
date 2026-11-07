@@ -90,6 +90,19 @@ npm install -g nodemon
 | `MONGO_URI`  | Yes      | —       | MongoDB connection string       |
 | `JWT_SECRET` | Yes      | —       | Secret used to sign/verify JWTs |
 
+Stage 1 People Search uses OpenSearch first and PostgreSQL only as an availability fallback. Configure the search provider on the backend, never in the mobile app:
+
+```env
+OPENSEARCH_URL=https://your-private-opensearch-endpoint
+OPENSEARCH_API_KEY=your-server-side-api-key
+OPENSEARCH_INDEX=touch-users-v1
+OPENSEARCH_TIMEOUT_MS=750
+SEARCH_DATABASE_TIMEOUT_MS=750
+TOUCH_STAGE1_ENABLED=true
+```
+
+Before enabling Stage 1 for an existing database, run `npm run stage1:opensearch-backfill`. New and changed profiles are synchronized through the durable PostgreSQL `user_search_outbox` worker. An OpenSearch outage uses the bounded PostgreSQL search query; an empty OpenSearch result does not trigger fallback.
+
 For multi-env setups (dev / staging / prod) you can combine **dotenv-flow** or your CI/CD secret manager; the code only expects `process.env.*`.
 
 ---

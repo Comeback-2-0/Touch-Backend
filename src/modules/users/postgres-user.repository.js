@@ -87,6 +87,11 @@ async function insertLifecycleOutbox(sql, user, operation) {
     values (${event.eventId}, ${event.userId}, ${event.operation}, ${toJson(event.payload)})
     on conflict do nothing
   `;
+  await sql`
+    insert into user_search_outbox (id, user_id, operation, payload)
+    values (${event.eventId}, ${event.userId}, ${event.operation}, ${toJson(event.payload)})
+    on conflict do nothing
+  `;
 }
 
 async function createUserQuery(sql, input) {

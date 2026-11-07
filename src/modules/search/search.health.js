@@ -1,5 +1,6 @@
 const {getPostgresClient, pingPostgres} = require('../../database/postgresClient');
 const {getNeo4jDriver, verifyNeo4jConnectivity} = require('../../database/neo4jClient');
+const {createOpenSearchSearchRepository} = require('./opensearch-search.repository');
 
 async function checkDependency(dependencies, name, check) {
   try {
@@ -13,13 +14,20 @@ async function checkDependency(dependencies, name, check) {
 }
 
 async function getSearchHealthStatus({
+  opensearchPing = () => createOpenSearchSearchRepository().ping(),
   postgresPing = () => pingPostgres(getPostgresClient()),
   graphPing = () => verifyNeo4jConnectivity(getNeo4jDriver()),
 } = {}) {
   const dependencies = {};
-  const postgresOk = await checkDependency(dependencies, 'postgres', postgresPing);
+  const opensearchOk = await checkDependency(dependencies, 'opensearch', opensearchPing);
+  const postgresOk = await checkDependency(dependencies, 'postgresFallback', postgresPing);
   const neo4jOk = await checkDependency(dependencies, 'neo4j', graphPing);
-  return {ok: postgresOk && neo4jOk, dependencies};
+  const degraded = !opensearchOk;
+  return {
+    ok: (opensearchOk || postgresOk) && neo4jOk,
+    degraded,
+    dependencies,
+  };
 }
 
 module.exports = {getSearchHealthStatus};

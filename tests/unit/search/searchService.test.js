@@ -13,12 +13,13 @@ function repositoryWith(items, {nextOffset = null, authoritative = true, capture
   };
 }
 
-test('search service uses the authoritative PostgreSQL repository as its primary provider', async () => {
+test('search service uses OpenSearch as the primary provider', async () => {
   let captured;
   const service = createSearchService({
-    searchRepository: repositoryWith([
+    openSearchRepository: repositoryWith([
       {userId: 'u2', name: 'Roy Be', username: 'roy_be', profilePhoto: 'p', secret: 'hidden'},
     ], {capture: input => { captured = input; }}),
+    postgresSearchRepository: repositoryWith([]),
     socialRepository: {async blockedUserIds() { return []; }},
   });
 
@@ -29,9 +30,52 @@ test('search service uses the authoritative PostgreSQL repository as its primary
   assert.equal(result.nextCursor, null);
 });
 
-test('search service returns a safe unavailable error when PostgreSQL search fails', async () => {
+test('OpenSearch zero results do not query PostgreSQL', async () => {
+  let postgresCalls = 0;
   const service = createSearchService({
-    searchRepository: {async searchPeople() { throw new Error('PostgreSQL down'); }},
+    openSearchRepository: repositoryWith([]),
+    postgresSearchRepository: {async searchPeople() { postgresCalls += 1; return {items: []}; }},
+  });
+
+  const result = await service.people({viewerId: 'u1', query: 'roy', mode: 'full'});
+
+  assert.deepEqual(result.items, []);
+  assert.equal(postgresCalls, 0);
+});
+
+test('search service falls back to PostgreSQL only when OpenSearch is unavailable', async () => {
+  let postgresCalls = 0;
+  const service = createSearchService({
+    openSearchRepository: {async searchPeople() { throw Object.assign(new Error('down'), {code: 'OPENSEARCH_UNAVAILABLE', fallbackAllowed: true}); }},
+    postgresSearchRepository: {
+      async searchPeople(input) { postgresCalls += 1; assert.equal(input.query, 'roy'); return {items: [{userId: 'u2'}]}; },
+    },
+  });
+
+  const result = await service.people({viewerId: 'u1', query: 'roy', mode: 'full'});
+
+  assert.deepEqual(result.items, [{userId: 'u2', username: '', name: '', profilePhoto: ''}]);
+  assert.equal(postgresCalls, 1);
+});
+
+test('search service does not fall back for a non-availability OpenSearch failure', async () => {
+  let postgresCalls = 0;
+  const service = createSearchService({
+    openSearchRepository: {async searchPeople() { throw Object.assign(new Error('bad request'), {code: 'OPENSEARCH_REQUEST_FAILED', fallbackAllowed: false}); }},
+    postgresSearchRepository: {async searchPeople() { postgresCalls += 1; return {items: []}; }},
+  });
+
+  await assert.rejects(
+    service.people({viewerId: 'u1', query: 'roy', mode: 'full'}),
+    error => error.code === 'SEARCH_UNAVAILABLE' && error.statusCode === 503,
+  );
+  assert.equal(postgresCalls, 0);
+});
+
+test('search service returns a safe unavailable error when the fallback PostgreSQL search fails', async () => {
+  const service = createSearchService({
+    openSearchRepository: {async searchPeople() { throw Object.assign(new Error('PostgreSQL down'), {code: 'OPENSEARCH_UNAVAILABLE', fallbackAllowed: true}); }},
+    postgresSearchRepository: {async searchPeople() { throw new Error('PostgreSQL down'); }},
   });
 
   await assert.rejects(
@@ -40,9 +84,9 @@ test('search service returns a safe unavailable error when PostgreSQL search fai
   );
 });
 
-test('manual search results still remove accounts blocked in either direction', async () => {
+test('search results still remove accounts blocked in either direction', async () => {
   const service = createSearchService({
-    searchRepository: repositoryWith([{userId: 'blocked'}, {userId: 'visible'}]),
+    openSearchRepository: repositoryWith([{userId: 'blocked'}, {userId: 'visible'}]),
     socialRepository: {async blockedUserIds() { return ['blocked']; }},
   });
 
@@ -53,7 +97,7 @@ test('manual search results still remove accounts blocked in either direction', 
 
 test('non-authoritative injected repositories still receive the active-account filter', async () => {
   const service = createSearchService({
-    searchRepository: {
+    openSearchRepository: {
       authoritative: false,
       async searchPeople() { return {items: [{userId: 'deactivated'}, {userId: 'visible'}]}; },
       async activeUserIds(ids) {
@@ -69,10 +113,10 @@ test('non-authoritative injected repositories still receive the active-account f
   assert.deepEqual(result.items.map(item => item.userId), ['visible']);
 });
 
-test('authoritative visibility failure returns retry and the next request retries PostgreSQL', async () => {
+test('authoritative visibility failure returns retry and the next request retries OpenSearch', async () => {
   let repositoryCalls = 0;
   const service = createSearchService({
-    searchRepository: {
+    openSearchRepository: {
       authoritative: true,
       async searchPeople() {
         repositoryCalls += 1;
@@ -87,23 +131,23 @@ test('authoritative visibility failure returns retry and the next request retrie
   assert.equal(repositoryCalls, 2);
 });
 
-test('manual search returns an opaque PostgreSQL cursor for the next page', async () => {
+test('OpenSearch search returns an opaque provider cursor for the next page', async () => {
   const calls = [];
   const service = createSearchService({
-    searchRepository: repositoryWith([{userId: 'u1'}], {nextOffset: 8, capture: input => calls.push(input)}),
+    openSearchRepository: repositoryWith([{userId: 'u1'}], {nextOffset: 8, capture: input => calls.push(input)}),
   });
 
   const first = await service.people({viewerId: 'viewer', query: 'ro', mode: 'suggest'});
   const cursor = decodeCursor(first.nextCursor);
 
-  assert.deepEqual(cursor, {type: 'postgres', offset: 8, query: 'ro'});
+  assert.deepEqual(cursor, {type: 'opensearch', offset: 8, query: 'ro'});
   assert.equal(calls[0].offset, 0);
 });
 
 test('rejects a cursor created for a different query before touching PostgreSQL', async () => {
   let calls = 0;
   const service = createSearchService({
-    searchRepository: {async searchPeople() { calls += 1; return {items: []}; }},
+    openSearchRepository: {async searchPeople() { calls += 1; return {items: []}; }},
   });
 
   await assert.rejects(
@@ -121,7 +165,7 @@ test('rejects a cursor created for a different query before touching PostgreSQL'
 test('invalid queries fail without calling the repository', async () => {
   let calls = 0;
   const service = createSearchService({
-    searchRepository: {async searchPeople() { calls += 1; return {items: []}; }},
+    openSearchRepository: {async searchPeople() { calls += 1; return {items: []}; }},
   });
 
   await assert.rejects(

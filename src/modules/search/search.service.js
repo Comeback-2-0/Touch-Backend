@@ -1,3 +1,4 @@
+const {createOpenSearchSearchRepository} = require('./opensearch-search.repository');
 const {createPostgresSearchRepository} = require('./postgres-search.repository');
 const {
   normalizeQuery,
@@ -26,24 +27,29 @@ function unavailableError(cause) {
 }
 
 function createSearchService({
+  openSearchRepository,
+  postgresSearchRepository,
+  // Compatibility injection name: it now represents the primary provider.
   searchRepository,
   socialRepository,
   logger = console,
 } = {}) {
-  let repository = searchRepository;
+  let openSearch = openSearchRepository || searchRepository;
+  let postgres = postgresSearchRepository;
 
-  function getRepository() {
-    if (!repository) repository = createPostgresSearchRepository();
-    return repository;
+  function getOpenSearchRepository() {
+    if (!openSearch) openSearch = createOpenSearchSearchRepository();
+    return openSearch;
+  }
+
+  function getPostgresRepository() {
+    if (!postgres) postgres = createPostgresSearchRepository();
+    return postgres;
   }
 
   async function filterVisible(viewerId, items, provider) {
     let candidates = items.filter(item => item.userId && item.userId !== String(viewerId));
 
-    // The production PostgreSQL provider already filters active/profile-complete
-    // accounts in the same query. Keep this defensive step for injected or
-    // future non-authoritative read providers without adding a second query to
-    // the normal path.
     if (provider?.authoritative !== true && typeof provider?.activeUserIds === 'function' && candidates.length) {
       const activeIds = new Set(await provider.activeUserIds(candidates.map(item => item.userId)));
       candidates = candidates.filter(item => activeIds.has(String(item.userId)));
@@ -66,6 +72,15 @@ function createSearchService({
     return visible;
   }
 
+  async function execute(repository, input) {
+    const result = await repository.searchPeople(input);
+    return {
+      result,
+      provider: repository.provider || (repository === postgres ? 'postgres' : 'opensearch'),
+      repository,
+    };
+  }
+
   return {
     async people({viewerId, query, mode = 'suggest', cursor, limit, requestId} = {}) {
       const normalized = normalizeQuery(query);
@@ -77,27 +92,41 @@ function createSearchService({
         });
       }
 
-      const provider = getRepository();
-      let result;
+      const input = {
+        viewerId,
+        query: normalized,
+        mode,
+        limit: safeLimit(limit, mode === 'suggest' ? 8 : 20),
+        offset: decodedCursor?.offset || 0,
+      };
+      let executed;
       try {
-        result = await provider.searchPeople({
-          viewerId,
-          query: normalized,
-          mode,
-          limit: safeLimit(limit, mode === 'suggest' ? 8 : 20),
-          offset: decodedCursor?.offset || 0,
-        });
+        executed = await execute(getOpenSearchRepository(), input);
       } catch (error) {
-        logger.error?.('[SEARCH] PostgreSQL search failed', {
+        if (!error?.fallbackAllowed) {
+          logger.error?.('[SEARCH] OpenSearch request failed', {
+            requestId: requestId || 'unknown',
+            error: error?.message || String(error),
+          });
+          throw unavailableError(error);
+        }
+        logger.warn?.('[SEARCH] OpenSearch unavailable; using PostgreSQL fallback', {
           requestId: requestId || 'unknown',
-          error: error?.message || String(error),
         });
-        throw unavailableError(error);
+        try {
+          executed = await execute(getPostgresRepository(), input);
+        } catch (fallbackError) {
+          logger.error?.('[SEARCH] PostgreSQL fallback failed', {
+            requestId: requestId || 'unknown',
+            error: fallbackError?.message || String(fallbackError),
+          });
+          throw unavailableError(fallbackError);
+        }
       }
 
       let items;
       try {
-        items = await filterVisible(viewerId, (result?.items || []).map(safeItem), provider);
+        items = await filterVisible(viewerId, (executed.result?.items || []).map(safeItem), executed.repository);
       } catch (error) {
         logger.error?.('[SEARCH] Authoritative visibility filter failed', {
           requestId: requestId || 'unknown',
@@ -106,12 +135,15 @@ function createSearchService({
         throw unavailableError(error);
       }
 
+      const provider = executed.provider === 'postgres' ? 'postgres' : 'opensearch';
       return {
         items,
-        nextCursor: result?.nextOffset === null || result?.nextOffset === undefined
+        nextCursor: executed.result?.nextOffset === null || executed.result?.nextOffset === undefined
           ? null
-          : encodeCursor({type: 'postgres', offset: result.nextOffset, query: normalized}),
+          : encodeCursor({type: provider, offset: executed.result.nextOffset, query: normalized}),
         query: normalized,
+        provider,
+        degraded: provider === 'postgres',
       };
     },
   };

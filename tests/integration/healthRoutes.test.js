@@ -53,12 +53,12 @@ test('GET /health returns 500 with unhealthy payload', async () => {
   assert.deepEqual(result.body, { ok: false });
 });
 
-test('GET /health/search reports a safe database readiness result', async () => {
+test('GET /health/search reports safe OpenSearch-primary readiness', async () => {
   const result = await requestHealth(async () => ({ok: true}), {
     path: '/health/search',
-    searchService: async () => ({ok: false, dependencies: {postgres: 'error', neo4j: 'ok'}}),
+    searchService: async () => ({ok: false, degraded: true, dependencies: {opensearch: 'error', postgresFallback: 'error', neo4j: 'ok'}}),
   });
 
   assert.equal(result.status, 503);
-  assert.deepEqual(result.body, {ok: false, dependencies: {postgres: 'error', neo4j: 'ok'}});
+  assert.deepEqual(result.body, {ok: false, degraded: true, dependencies: {opensearch: 'error', postgresFallback: 'error', neo4j: 'ok'}});
 });

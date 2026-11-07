@@ -4,10 +4,12 @@ const {runCommunityPublication} = require('./community-publication');
 const {createStage1NotificationOutboxRunner} = require('./stage1NotificationOutbox');
 const {createStage1NotificationDeliveryOutboxRunner} = require('./stage1NotificationDeliveryOutbox');
 const {createStage1UserGraphOutboxRunner} = require('./stage1UserGraphOutbox');
+const {createStage1UserSearchOutboxRunner} = require('./stage1UserSearchOutbox');
 
 const runStage1NotificationOutbox = createStage1NotificationOutboxRunner();
 const runStage1NotificationDeliveryOutbox = createStage1NotificationDeliveryOutboxRunner();
 const runStage1UserGraphOutbox = createStage1UserGraphOutboxRunner();
+const runStage1UserSearchOutbox = createStage1UserSearchOutboxRunner();
 
 cron.schedule('* * * * *', async () => {
   try { await runCommunityPublication(); } catch (error) { console.error('[CRON] Community publication failed', error); }
@@ -17,6 +19,7 @@ cron.schedule('*/10 * * * * *', async () => {
   try { await runStage1NotificationOutbox(); } catch (error) { console.error('[CRON] Stage 1 notification outbox failed', error); }
   try { await runStage1NotificationDeliveryOutbox(); } catch (error) { console.error('[CRON] Stage 1 notification delivery outbox failed', error); }
   try { await runStage1UserGraphOutbox(); } catch (error) { console.error('[CRON] Stage 1 user graph outbox failed', error); }
+  try { await runStage1UserSearchOutbox(); } catch (error) { console.error('[CRON] Stage 1 user search outbox failed', error); }
 });
 
 cron.schedule('*/5 * * * *', async () => {

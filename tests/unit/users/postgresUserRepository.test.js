@@ -114,6 +114,7 @@ test('profile update and graph lifecycle outbox insert share one PostgreSQL tran
   assert.equal(calls[0].query, 'begin');
   assert.match(calls[1].query, /update users/i);
   assert.match(calls[2].query, /insert into user_graph_outbox/i);
+  assert.match(calls[3].query, /insert into user_search_outbox/i);
 });
 
 test('user creation and graph lifecycle outbox insert share one PostgreSQL transaction', async () => {
@@ -148,4 +149,5 @@ test('user creation and graph lifecycle outbox insert share one PostgreSQL trans
   assert.equal(calls[0].query, 'begin');
   assert.match(calls[1].query, /insert into users/i);
   assert.match(calls[2].query, /insert into user_graph_outbox/i);
+  assert.match(calls[3].query, /insert into user_search_outbox/i);
 });

@@ -1,6 +1,6 @@
 const MAX_QUERY_LENGTH = 64;
 const MAX_CURSOR_LENGTH = 2048;
-const MAX_POSTGRES_OFFSET = 100000;
+const MAX_SEARCH_OFFSET = 100000;
 
 function getMaxQueryLength() {
   const configured = Number(process.env.SEARCH_MAX_QUERY_LENGTH);
@@ -38,12 +38,12 @@ function decodeCursor(value) {
     if (encoded.length > MAX_CURSOR_LENGTH) throw new Error('cursor too large');
     const parsed = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('invalid cursor');
-    if (parsed.type !== 'postgres') throw new Error('invalid search provider cursor');
+    if (!['opensearch', 'postgres'].includes(parsed.type)) throw new Error('invalid search provider cursor');
     if (typeof parsed.query !== 'string' || parsed.query.length < 2 || parsed.query.length > getMaxQueryLength()) {
       throw new Error('cursor query is missing or invalid');
     }
-    if (!Number.isInteger(parsed.offset) || parsed.offset < 0 || parsed.offset > MAX_POSTGRES_OFFSET) {
-      throw new Error('invalid PostgreSQL cursor');
+    if (!Number.isInteger(parsed.offset) || parsed.offset < 0 || parsed.offset > MAX_SEARCH_OFFSET) {
+      throw new Error('invalid search cursor');
     }
     return parsed;
   } catch {
@@ -54,7 +54,8 @@ function decodeCursor(value) {
 module.exports = {
   MAX_QUERY_LENGTH,
   MAX_CURSOR_LENGTH,
-  MAX_POSTGRES_OFFSET,
+  MAX_SEARCH_OFFSET,
+  MAX_POSTGRES_OFFSET: MAX_SEARCH_OFFSET,
   getMaxQueryLength,
   normalizeQuery,
   safeLimit,

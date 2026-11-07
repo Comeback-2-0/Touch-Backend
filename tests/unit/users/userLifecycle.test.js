@@ -32,17 +32,21 @@ test('the same lifecycle event produces stable idempotency keys', () => {
   assert.notEqual(lifecycleEventId(user, 'upsert'), lifecycleEventId(user, 'delete'));
 });
 
-test('lifecycle events are emitted only to the graph outbox because search reads PostgreSQL directly', async () => {
+test('lifecycle events are emitted to both the graph and OpenSearch outboxes', async () => {
   const graph = [];
+  const search = [];
   const result = await enqueueUserLifecycleEvents({
     user,
     graphOutbox: {enqueue: async event => graph.push(event)},
+    searchOutbox: {enqueue: async event => search.push(event)},
   });
 
   assert.equal(result.graph, true);
+  assert.equal(result.search, true);
   assert.equal(graph.length, 1);
-  assert.equal(result.index, undefined);
+  assert.equal(search.length, 1);
   assert.equal(graph[0].operation, 'upsert');
+  assert.equal(search[0].operation, 'upsert');
 });
 
 test('deactivation emits delete events and marks the projection inactive', async () => {
@@ -51,6 +55,7 @@ test('deactivation emits delete events and marks the projection inactive', async
     user,
     operation: 'delete',
     graphOutbox: {enqueue: async event => events.push(event)},
+    searchOutbox: {enqueue: async event => events.push({search: true, ...event})},
   });
 
   assert.equal(events[0].operation, 'delete');
